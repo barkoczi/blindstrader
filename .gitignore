@@ -1,0 +1,36 @@
+# Laravel specific
+services/*/vendor/
+services/*/node_modules/
+services/*/.env
+services/*/.env.backup
+services/*/storage/logs/
+services/*/storage/framework/cache/
+services/*/storage/framework/sessions/
+services/*/storage/framework/testing/
+services/*/storage/framework/views/
+services/*/bootstrap/cache/*.php
+
+# Docker volumes
+db_data/
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Backup files
+*.bak
+
+# Test coverage
+coverage/
+*.coverage
