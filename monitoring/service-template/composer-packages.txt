@@ -1,0 +1,30 @@
+# Required Composer Packages for Monitoring
+
+## Installation Command
+
+```bash
+cd services/your-service-name
+composer require sentry/sentry-laravel:"^4.0" spatie/laravel-prometheus:"^1.0"
+```
+
+## Package Details
+
+- **sentry/sentry-laravel**: ^4.0
+  - Error tracking and performance monitoring
+  - Automatic exception capturing
+  - Breadcrumbs for SQL queries and Redis commands
+  
+- **spatie/laravel-prometheus**: ^1.0
+  - Prometheus metrics exporter for Laravel
+  - Histogram and counter support
+  - CollectorRegistry integration
+
+## Post-Installation
+
+After running composer require, publish Sentry configuration:
+
+```bash
+php artisan sentry:publish --config
+```
+
+This creates `config/sentry.php` which you should customize with service-specific tags.

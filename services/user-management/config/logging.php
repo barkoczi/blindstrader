@@ -4,6 +4,7 @@ use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
+use Monolog\Formatter\JsonFormatter;
 
 return [
 
@@ -56,6 +57,18 @@ return [
             'driver' => 'stack',
             'channels' => explode(',', (string) env('LOG_STACK', 'single')),
             'ignore_exceptions' => false,
+            'formatter' => JsonFormatter::class,
+            'formatter_with' => [
+                'includeStacktraces' => true,
+            ],
+            'processors' => [
+                function ($record) {
+                    $record['extra']['service_name'] = 'user-management';
+                    $record['extra']['request_id'] = request()->header('X-Request-ID', uniqid('req_', true));
+                    $record['extra']['user_id'] = auth()->id();
+                    return $record;
+                },
+            ],
         ],
 
         'single' => [
@@ -89,7 +102,7 @@ return [
             'handler_with' => [
                 'host' => env('PAPERTRAIL_URL'),
                 'port' => env('PAPERTRAIL_PORT'),
-                'connectionString' => 'tls://'.env('PAPERTRAIL_URL').':'.env('PAPERTRAIL_PORT'),
+                'connectionString' => 'tls://' . env('PAPERTRAIL_URL') . ':' . env('PAPERTRAIL_PORT'),
             ],
             'processors' => [PsrLogMessageProcessor::class],
         ],

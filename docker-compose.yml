@@ -51,6 +51,10 @@ services:
       SESSION_DRIVER: redis
       CACHE_DRIVER: redis
       SESSION_DOMAIN: .blindstrader.test
+      SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN:-}
+      SENTRY_ENVIRONMENT: catalog
+      SENTRY_TRACES_SAMPLE_RATE: 0.2
+      SENTRY_SEND_DEFAULT_PII: "true"
     depends_on:
       db:
         condition: service_healthy
@@ -81,6 +85,10 @@ services:
       SESSION_DRIVER: redis
       CACHE_DRIVER: redis
       SESSION_DOMAIN: .blindstrader.test
+      SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN:-}
+      SENTRY_ENVIRONMENT: user-management
+      SENTRY_TRACES_SAMPLE_RATE: 0.2
+      SENTRY_SEND_DEFAULT_PII: "true"
     depends_on:
       db:
         condition: service_healthy
@@ -118,6 +126,7 @@ services:
       - "8443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./services/catalog:/app/catalog:ro
       - ./services/user-management:/app/user-management:ro
       - ./logs/nginx:/var/log/nginx
@@ -128,10 +137,152 @@ services:
     networks:
       - blindstrader
 
+  # Monitoring Services
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: blindstrader-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    networks:
+      - blindstrader
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: blindstrader-grafana
+    restart: unless-stopped
+    environment:
+      GF_SERVER_ROOT_URL: https://insights.blindstrader.test
+      GF_SERVER_DOMAIN: insights.blindstrader.test
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: ""
+    ports:
+      - "8000:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - blindstrader
+
+  loki:
+    image: grafana/loki:latest
+    container_name: blindstrader-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki:/etc/loki
+      - loki_data:/loki
+    networks:
+      - blindstrader
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: blindstrader-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    ports:
+      - "9080:9080"
+    volumes:
+      - ./monitoring/promtail:/etc/promtail
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./logs/nginx:/var/log/nginx:ro
+    depends_on:
+      - loki
+    networks:
+      - blindstrader
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: blindstrader-cadvisor
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "8004:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    networks:
+      - blindstrader
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: blindstrader-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    pid: host
+    networks:
+      - blindstrader
+
+  mysql-exporter:
+    image: prom/mysqld-exporter:latest
+    container_name: blindstrader-mysql-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "exporter:${MYSQL_EXPORTER_PASSWORD:-exporter_pass}@tcp(blindstrader-mysql:3306)/"
+    ports:
+      - "9104:9104"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - blindstrader
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: blindstrader-redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "blindstrader-redis:6379"
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - blindstrader
+
 networks:
   blindstrader:
     driver: bridge
 
 volumes:
   db_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
     driver: local

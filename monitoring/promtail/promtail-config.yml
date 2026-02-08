@@ -1,0 +1,121 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: info
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://blindstrader-loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Docker container logs
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=blindstrader"]
+    
+    relabel_configs:
+      # Extract container name
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container_name'
+      
+      # Extract service name from compose label
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service_name'
+      
+      # Extract container ID (short)
+      - source_labels: ['__meta_docker_container_id']
+        regex: '(.{12}).*'
+        target_label: 'container_id'
+      
+      # Set log path
+      - source_labels: ['__meta_docker_container_id']
+        target_label: '__path__'
+        replacement: '/var/lib/docker/containers/$1/*.log'
+    
+    pipeline_stages:
+      # Parse Docker JSON logs
+      - docker: {}
+      
+      # Extract log level from Laravel logs
+      - regex:
+          expression: '^\[(?P<timestamp>[^\]]+)\] (?P<environment>\w+)\.(?P<level>\w+):'
+      
+      # Set log level label
+      - labels:
+          level:
+          environment:
+      
+      # Drop healthcheck logs to reduce noise
+      - drop:
+          expression: '.*GET /up HTTP.*'
+          drop_counter_reason: healthcheck
+
+  # Nginx access logs
+  - job_name: nginx-access
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx-access
+          service_name: nginx
+          log_type: access
+          __path__: /var/log/nginx/access.log
+    
+    pipeline_stages:
+      # Parse Nginx combined log format
+      - regex:
+          expression: '^(?P<remote_addr>[\w\.]+) - (?P<remote_user>[^ ]*) \[(?P<time_local>[^\]]+)\] "(?P<method>\w+) (?P<request_uri>[^ ]*) (?P<protocol>[^"]*)" (?P<status>\d+) (?P<body_bytes_sent>\d+) "(?P<http_referer>[^"]*)" "(?P<http_user_agent>[^"]*)".*'
+      
+      # Extract labels
+      - labels:
+          method:
+          status:
+          remote_addr:
+      
+      # Parse timestamp
+      - timestamp:
+          source: time_local
+          format: '02/Jan/2006:15:04:05 -0700'
+      
+      # Drop healthcheck requests
+      - drop:
+          expression: '.*GET /up HTTP.*'
+          drop_counter_reason: healthcheck
+      
+      # Drop static asset requests (optional - uncomment to reduce log volume)
+      # - drop:
+      #     expression: '.*(\.css|\.js|\.jpg|\.png|\.gif|\.ico|\.svg|\.woff|\.woff2|\.ttf).*'
+      #     drop_counter_reason: static_assets
+
+  # Nginx error logs
+  - job_name: nginx-error
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx-error
+          service_name: nginx
+          log_type: error
+          __path__: /var/log/nginx/error.log
+    
+    pipeline_stages:
+      # Parse Nginx error log format
+      - regex:
+          expression: '^(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<level>\w+)\] (?P<pid>\d+)#(?P<tid>\d+): (\*(?P<cid>\d+) )?(?P<message>.*)'
+      
+      # Set labels
+      - labels:
+          level:
+          pid:
+      
+      # Parse timestamp
+      - timestamp:
+          source: timestamp
+          format: '2006/01/02 15:04:05'

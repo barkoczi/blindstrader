@@ -1,0 +1,26 @@
+# Docker Compose Environment Variables Template
+# Add these to your service definition in docker-compose.yml
+
+environment:
+  # Database (adjust database name)
+  DB_HOST: db
+  DB_PORT: 3306
+  DB_DATABASE: blindstrader_your_service
+  DB_USERNAME: ${DB_USERNAME:-blindstrader}
+  DB_PASSWORD: ${DB_PASSWORD:-blindstrader}
+  
+  # Redis
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  SESSION_DRIVER: redis
+  CACHE_DRIVER: redis
+  SESSION_DOMAIN: .blindstrader.test
+  
+  # Sentry Error Tracking (shared project)
+  SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN:-}
+  SENTRY_ENVIRONMENT: your-service  # CHANGE THIS to your service name
+  SENTRY_TRACES_SAMPLE_RATE: 0.2    # 20% transaction sampling
+  SENTRY_SEND_DEFAULT_PII: "true"   # Include user context in errors
+
+# Also update config/logging.php processor to set correct service name:
+# $record['extra']['service_name'] = 'your-service';

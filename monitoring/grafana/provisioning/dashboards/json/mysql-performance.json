@@ -1,0 +1,84 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "Connections",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 20,
+      "targets": [
+        {
+          "expr": "mysql_global_status_threads_connected",
+          "legendFormat": "Connected",
+          "refId": "A"
+        },
+        {
+          "expr": "mysql_global_status_threads_running",
+          "legendFormat": "Running",
+          "refId": "B"
+        }
+      ],
+      "title": "MySQL Connections",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "Queries/sec",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "qps"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 21,
+      "targets": [
+        {
+          "expr": "rate(mysql_global_status_queries[5m])",
+          "legendFormat": "Queries",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(mysql_global_status_slow_queries[5m])",
+          "legendFormat": "Slow Queries",
+          "refId": "B"
+        }
+      ],
+      "title": "MySQL Query Rate",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": ["mysql", "database"],
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "MySQL Performance",
+  "uid": "mysql-performance",
+  "version": 0
+}

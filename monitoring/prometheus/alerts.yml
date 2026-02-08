@@ -1,0 +1,188 @@
+# Prometheus Alert Rules for BlindStrader Platform
+# 
+# Baseline Monitoring Period: Monitor these alerts for 1-2 weeks to establish
+# performance baselines before adding Alertmanager and Slack integration.
+# 
+# After baseline period, add Alertmanager service to docker-compose.yml and
+# configure Slack webhook for notifications.
+
+groups:
+  - name: laravel_application_alerts
+    interval: 30s
+    rules:
+      # High HTTP error rate (5xx responses)
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(http_requests_total{status=~"5.."}[5m]) 
+            / 
+            rate(http_requests_total[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          category: application
+        annotations:
+          summary: "High error rate detected on {{ $labels.service }}"
+          description: "Service {{ $labels.service }} has error rate of {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      # Slow response times (p95 latency)
+      - alert: SlowResponseTime
+        expr: |
+          histogram_quantile(0.95, 
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "Slow response time on {{ $labels.service }}"
+          description: "95th percentile response time is {{ $value }}s (threshold: 1s)"
+
+      # High database query latency
+      - alert: HighQueryLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(db_query_duration_seconds_bucket[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "High database query latency on {{ $labels.service }}"
+          description: "95th percentile query time is {{ $value }}s for model {{ $labels.model }} (threshold: 500ms)"
+
+      # High request rate (potential DDoS or traffic spike)
+      - alert: HighRequestRate
+        expr: |
+          rate(http_requests_total[1m]) > 1000
+        for: 2m
+        labels:
+          severity: warning
+          category: traffic
+        annotations:
+          summary: "High request rate on {{ $labels.service }}"
+          description: "Request rate is {{ $value }} req/s (threshold: 1000 req/s)"
+
+      # Too many database queries (potential N+1)
+      - alert: HighQueryCount
+        expr: |
+          rate(db_queries_total[5m]) > 500
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "High query count on {{ $labels.service }}"
+          description: "Query rate is {{ $value }} queries/s for table {{ $labels.table }}"
+
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      # Container restarted
+      - alert: ContainerRestarted
+        expr: |
+          time() - container_start_time_seconds{name=~"blindstrader-.*"} < 300
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "Container {{ $labels.name }} restarted"
+          description: "Container {{ $labels.name }} restarted {{ $value }}s ago"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            container_memory_usage_bytes{name=~"blindstrader-.*"}
+            /
+            container_spec_memory_limit_bytes{name=~"blindstrader-.*"}
+          ) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "High memory usage on {{ $labels.name }}"
+          description: "Memory usage is {{ $value | humanizePercentage }} (threshold: 80%)"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: |
+          rate(container_cpu_usage_seconds_total{name=~"blindstrader-.*"}[5m]) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "High CPU usage on {{ $labels.name }}"
+          description: "CPU usage is {{ $value | humanizePercentage }} (threshold: 80%)"
+
+      # Database down
+      - alert: DatabaseDown
+        expr: |
+          mysql_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "MySQL database is down"
+          description: "MySQL exporter cannot connect to database"
+
+      # Redis down
+      - alert: RedisDown
+        expr: |
+          redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "Redis is down"
+          description: "Redis exporter cannot connect to Redis"
+
+      # Disk space usage
+      - alert: HighDiskUsage
+        expr: |
+          (
+            node_filesystem_avail_bytes{mountpoint="/"}
+            /
+            node_filesystem_size_bytes{mountpoint="/"}
+          ) < 0.10
+        for: 5m
+        labels:
+          severity: critical
+          category: resources
+        annotations:
+          summary: "Low disk space on host"
+          description: "Only {{ $value | humanizePercentage }} disk space available (threshold: 10%)"
+
+  - name: metrics_quality_alerts
+    interval: 60s
+    rules:
+      # High metrics cardinality (too many unique label combinations)
+      - alert: HighMetricsCardinality
+        expr: |
+          count(count by (model) (db_query_duration_seconds_bucket)) > 100
+        for: 10m
+        labels:
+          severity: warning
+          category: observability
+        annotations:
+          summary: "High metrics cardinality detected"
+          description: "{{ $value }} unique model labels detected (threshold: 100). Review cardinality limiting logic."
+
+      # Scrape failure
+      - alert: ScrapeFailed
+        expr: |
+          up{job=~".*-metrics"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          category: observability
+        annotations:
+          summary: "Prometheus cannot scrape {{ $labels.job }}"
+          description: "Target {{ $labels.instance }} is down or not exposing metrics"

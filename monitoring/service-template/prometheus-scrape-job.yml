@@ -1,0 +1,16 @@
+# Prometheus Scrape Job Template
+# Add this to monitoring/prometheus/prometheus.yml under scrape_configs:
+
+  # Your Service Name - Application metrics
+  - job_name: 'your-service-metrics'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['blindstrader-your-service:9000']  # Adjust port if needed
+        labels:
+          service: 'your-service'
+          service_type: 'laravel'
+
+# Replace:
+# - 'your-service-metrics' with descriptive job name
+# - 'blindstrader-your-service' with actual container name
+# - 'your-service' label with actual service name

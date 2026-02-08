@@ -1,0 +1,28 @@
+{
+  "datasource": "Prometheus",
+  "fieldConfig": {
+    "defaults": {
+      "color": { "mode": "palette-classic" },
+      "custom": {
+        "axisLabel": "Requests/sec",
+        "axisPlacement": "auto",
+        "drawStyle": "line",
+        "fillOpacity": 10,
+        "lineWidth": 2,
+        "showPoints": "never"
+      },
+      "unit": "reqps"
+    }
+  },
+  "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+  "id": 999,
+  "targets": [
+    {
+      "expr": "sum(rate(http_requests_total{service_name=\"your-service\"}[5m])) by (endpoint)",
+      "legendFormat": "{{endpoint}}",
+      "refId": "A"
+    }
+  ],
+  "title": "Your Service - Request Rate by Endpoint",
+  "type": "timeseries"
+}

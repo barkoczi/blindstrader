@@ -11,6 +11,7 @@
 - Branching: Trunk-based (main, release/staging, release/production)
 - Deployment: Debian Linux EC2
 - the docker images need to be built natively using docker buildx with --platform linux/amd64,linux/arm64 to create multi-architecture images  
+- local development is supported by valet proxy, all the *.test domain are automatically routed to 127.0.0.1
 
 ## Services
 1. **user-management**: User, organization, authentication management
