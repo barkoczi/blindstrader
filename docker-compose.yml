@@ -91,6 +91,24 @@ services:
     command: >
       sh -c "php artisan migrate --force && php-fpm"
 
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: blindstrader-phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      UPLOAD_LIMIT: 100M
+    ports:
+      - "8003:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - blindstrader
+
   nginx:
     image: nginx:alpine
     container_name: blindstrader-nginx
@@ -106,6 +124,7 @@ services:
     depends_on:
       - catalog
       - user-management
+      - phpmyadmin
     networks:
       - blindstrader
 
