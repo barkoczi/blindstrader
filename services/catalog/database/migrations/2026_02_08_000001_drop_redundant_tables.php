@@ -14,14 +14,14 @@ return new class extends Migration
         // Drop user-related tables - user management is centralized
         Schema::dropIfExists('password_reset_tokens');
         Schema::dropIfExists('users');
-        
+
         // Drop session table - sessions are stored in Redis
         Schema::dropIfExists('sessions');
-        
+
         // Drop cache tables - cache is stored in Redis
         Schema::dropIfExists('cache');
         Schema::dropIfExists('cache_locks');
-        
+
         // Drop job tables - jobs are queued in Redis
         Schema::dropIfExists('job_batches');
         Schema::dropIfExists('failed_jobs');
