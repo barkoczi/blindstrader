@@ -22,11 +22,11 @@ Elastic IP: 18.132.180.137
     
 Next Steps:
     
-1. Update DNS at your registrar with these nameservers:
-         ns-1232.awsdns-26.org
-       ns-1764.awsdns-28.co.uk
-       ns-259.awsdns-32.com
-       ns-828.awsdns-39.net
+1. Add DNS A records in Cloudflare (see docs/cloudflare-dns-import.txt):
+   - auth.blindstrader.com -> 18.132.180.137
+   - catalog.blindstrader.com -> 18.132.180.137
+   - insights.blindstrader.com -> 18.132.180.137
+   - prometheus.blindstrader.com -> 18.132.180.137
     
 2. Update Ansible inventory file:
    Edit: ../../ansible/inventory/prod.yml
@@ -60,11 +60,5 @@ Next Steps:
 EOT
 ec2_instance_id = "i-0ff493ef7b0faca2a"
 elastic_ip = "18.132.180.137"
-route53_name_servers = tolist([
-  "ns-1232.awsdns-26.org",
-  "ns-1764.awsdns-28.co.uk",
-  "ns-259.awsdns-32.com",
-  "ns-828.awsdns-39.net",
-])
 s3_backup_bucket = "blindstrader-backups-prod"
 ssh_command = "ssh -i ~/.ssh/blindstrader-prod-key ec2-user@18.132.180.137"
