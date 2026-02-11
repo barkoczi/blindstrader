@@ -1,0 +1,48 @@
+
+auto_shutdown_schedule = {
+  "start" = "0 8 ? * MON-FRI *"
+  "stop" = "0 18 ? * MON-FRI *"
+}
+cost_estimate = <<EOT
+Estimated monthly cost for staging:
+- EC2 t3a.small: $17/month (if running 24/7)
+- With auto-shutdown (weekdays only): ~$8-10/month (50-70% savings)
+- EBS volumes (45GB): $4/month
+- Elastic IP: $0 (while attached)
+- Route53: Shared with prod
+- Total: ~$12-21/month depending on usage
+
+EOT
+deployment_info = <<EOT
+1. Configure NS records at your domain registrar:
+   ns-1392.awsdns-46.org
+       ns-1700.awsdns-20.co.uk
+       ns-267.awsdns-33.com
+       ns-596.awsdns-10.net
+    
+2. Create secrets in AWS Secrets Manager:
+   - /blindstrader/shared/gpg_public_key (if not already created)
+   - /blindstrader/stage/db_password
+   - /blindstrader/stage/redis_password
+   - /blindstrader/stage/app_key
+   - /blindstrader/stage/grafana_admin_password
+   - /blindstrader/stage/basic_auth_password
+    
+3. SSH to instance: ssh -i ~/.ssh/stage-key.pem ec2-user@18.133.43.175
+    
+4. Deploy application code and run certbot initial setup
+    
+5. Auto-shutdown schedule:
+   - Stop: 0 18 ? * MON-FRI * (UTC)
+   - Start: 0 8 ? * MON-FRI * (UTC)
+
+EOT
+ec2_instance_id = "i-063ff69edbe158372"
+elastic_ip = "18.133.43.175"
+route53_name_servers = tolist([
+  "ns-1392.awsdns-46.org",
+  "ns-1700.awsdns-20.co.uk",
+  "ns-267.awsdns-33.com",
+  "ns-596.awsdns-10.net",
+])
+ssh_command = "ssh -i ~/.ssh/stage-key.pem ec2-user@18.133.43.175"

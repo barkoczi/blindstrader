@@ -1,0 +1,71 @@
+---
+# Nginx role - Deploy nginx configuration
+
+- name: Create nginx config directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: ansible
+    group: ansible
+    mode: '0755'
+  loop:
+    - /opt/blindstrader/nginx
+    - /opt/blindstrader/nginx/conf.d
+    - /opt/blindstrader/nginx/certs
+  tags: [nginx]
+
+- name: Deploy main nginx configuration
+  template:
+    src: nginx.conf.j2
+    dest: /opt/blindstrader/nginx/nginx.conf
+    owner: ansible
+    group: ansible
+    mode: '0644'
+  notify: reload nginx
+  tags: [nginx, config]
+
+- name: Deploy application nginx configuration
+  template:
+    src: app.conf.j2
+    dest: /opt/blindstrader/nginx/conf.d/app.conf
+    owner: ansible
+    group: ansible
+    mode: '0644'
+  notify: reload nginx
+  tags: [nginx, config]
+
+- name: Deploy monitoring nginx configuration
+  template:
+    src: monitoring.conf.j2
+    dest: /opt/blindstrader/nginx/conf.d/monitoring.conf
+    owner: ansible
+    group: ansible
+    mode: '0644'
+  notify: reload nginx
+  tags: [nginx, config]
+
+- name: Retrieve basic auth password from Secrets Manager
+  shell: |
+    aws secretsmanager get-secret-value \
+      --secret-id /blindstrader/{{ environment }}/basic_auth_password \
+      --region eu-west-2 \
+      --query SecretString \
+      --output text
+  register: basic_auth_secret
+  no_log: true
+  changed_when: false
+  tags: [nginx, secrets]
+
+- name: Generate htpasswd for monitoring endpoints
+  shell: |
+    htpasswd -cb /opt/blindstrader/nginx/.htpasswd admin "{{ basic_auth_secret.stdout }}"
+  no_log: true
+  tags: [nginx, auth]
+
+- name: Set htpasswd permissions
+  file:
+    path: /opt/blindstrader/nginx/.htpasswd
+    owner: ansible
+    group: ansible
+    mode: '0600'
+  tags: [nginx, auth]

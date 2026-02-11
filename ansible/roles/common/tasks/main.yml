@@ -1,0 +1,84 @@
+---
+# Common role - Base system configuration
+
+- name: Update system packages
+  yum:
+    name: '*'
+    state: latest
+    update_cache: yes
+  tags: [packages]
+
+- name: Install essential packages
+  yum:
+    name:
+      - git
+      - curl
+      - wget
+      - vim
+      - htop
+      - unzip
+      - tar
+      - gzip
+      - jq
+      - python3
+      - python3-pip
+      - amazon-cloudwatch-agent
+    state: present
+  tags: [packages]
+
+- name: Install AWS CLI
+  pip:
+    name: awscli
+    executable: pip3
+    state: present
+  tags: [aws]
+
+- name: Set timezone
+  timezone:
+    name: UTC
+  tags: [system]
+
+- name: Configure system limits
+  pam_limits:
+    domain: '*'
+    limit_type: '-'
+    limit_item: nofile
+    value: '65536'
+  tags: [system]
+
+- name: Create application directory
+  file:
+    path: /opt/blindstrader
+    state: directory
+    owner: ansible
+    group: ansible
+    mode: '0755'
+  tags: [filesystem]
+
+- name: Mount EBS volumes
+  include_tasks: mount_ebs.yml
+  loop: "{{ ebs_volumes }}"
+  loop_control:
+    loop_var: volume
+  tags: [ebs]
+
+- name: Configure firewalld (if present)
+  block:
+    - name: Check if firewalld is installed
+      command: which firewalld
+      register: firewalld_check
+      failed_when: false
+      changed_when: false
+      
+    - name: Disable firewalld (AWS security groups handle this)
+      service:
+        name: firewalld
+        state: stopped
+        enabled: no
+      when: firewalld_check.rc == 0
+  tags: [firewall]
+
+- name: Set hostname
+  hostname:
+    name: "blindstrader-{{ environment }}"
+  tags: [system]

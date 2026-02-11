@@ -1,0 +1,20 @@
+# Ansible
+*.retry
+.ansible/
+ansible.log
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# Vault files (if using)
+vault-password.txt
+
+# Inventory files with IPs
+inventory/prod.yml
+inventory/stage.yml
+
+# Keep templates
+!inventory/*.example
+!inventory/*.template

@@ -1,0 +1,70 @@
+ansible_inventory = {
+  "ansible_host" = "18.132.180.137"
+  "ansible_user" = "ansible"
+  "backup_enabled" = true
+  "backup_s3_bucket" = "blindstrader-backups-prod"
+  "domain" = "blindstrader.com"
+  "ebs_devices" = {
+    "monitoring" = "/dev/xvdh"
+    "mysql" = "/dev/xvdf"
+    "redis" = "/dev/xvdg"
+  }
+  "environment" = "prod"
+  "host" = "blindstrader-prod"
+}
+deployment_info = <<EOT
+========================================
+Terraform Apply Complete!
+========================================
+    
+Environment: prod
+Elastic IP: 18.132.180.137
+    
+Next Steps:
+    
+1. Update DNS at your registrar with these nameservers:
+         ns-1232.awsdns-26.org
+       ns-1764.awsdns-28.co.uk
+       ns-259.awsdns-32.com
+       ns-828.awsdns-39.net
+    
+2. Update Ansible inventory file:
+   Edit: ../../ansible/inventory/prod.yml
+   Set ansible_host: 18.132.180.137
+    
+3. Create secrets in AWS Secrets Manager:
+   - /blindstrader/shared/gpg_public_key
+   - /blindstrader/prod/db_password
+   - /blindstrader/prod/redis_password
+   - /blindstrader/prod/app_key
+   - /blindstrader/prod/grafana_admin_password
+   - /blindstrader/prod/basic_auth_password
+    
+4. Run Ansible to configure the instance:
+   cd ../../ansible
+   ansible-playbook -i inventory/prod.yml playbooks/site.yml
+    
+5. Obtain SSL certificates:
+   ansible-playbook -i inventory/prod.yml playbooks/ssl.yml
+    
+6. Verify deployment:
+   https://blindstrader.com
+   https://auth.blindstrader.com
+   https://catalog.blindstrader.com
+   https://insights.blindstrader.com
+    
+========================================
+    
+4. Deploy application code and run certbot initial setup
+
+EOT
+ec2_instance_id = "i-0ff493ef7b0faca2a"
+elastic_ip = "18.132.180.137"
+route53_name_servers = tolist([
+  "ns-1232.awsdns-26.org",
+  "ns-1764.awsdns-28.co.uk",
+  "ns-259.awsdns-32.com",
+  "ns-828.awsdns-39.net",
+])
+s3_backup_bucket = "blindstrader-backups-prod"
+ssh_command = "ssh -i ~/.ssh/blindstrader-prod-key ec2-user@18.132.180.137"

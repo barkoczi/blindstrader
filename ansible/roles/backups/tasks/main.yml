@@ -1,0 +1,84 @@
+---
+# Backups role - Configure automated backups
+
+- name: Retrieve GPG public key from Secrets Manager
+  shell: |
+    aws secretsmanager get-secret-value \
+      --secret-id /blindstrader/shared/gpg_public_key \
+      --region eu-west-2 \
+      --query SecretString \
+      --output text
+  register: gpg_public_key_content
+  no_log: true
+  changed_when: false
+  when: backup_enabled
+  tags: [backups, secrets]
+
+- name: Import GPG public key
+  shell: |
+    echo "{{ gpg_public_key_content.stdout }}" | gpg --import
+  when: 
+    - backup_enabled
+    - gpg_public_key_content.stdout is defined
+  no_log: true
+  tags: [backups, gpg]
+
+- name: Create backup script directory
+  file:
+    path: /opt/blindstrader/scripts
+    state: directory
+    owner: ansible
+    group: ansible
+    mode: '0755'
+  when: backup_enabled
+  tags: [backups]
+
+- name: Deploy backup script
+  template:
+    src: backup.sh.j2
+    dest: /opt/blindstrader/scripts/backup.sh
+    owner: ansible
+    group: ansible
+    mode: '0755'
+  when: backup_enabled
+  tags: [backups]
+
+- name: Create systemd service for backups
+  template:
+    src: backup.service.j2
+    dest: /etc/systemd/system/blindstrader-backup.service
+    owner: root
+    group: root
+    mode: '0644'
+  when: backup_enabled
+  notify: reload systemd
+  tags: [backups, systemd]
+
+- name: Create systemd timer for backups
+  template:
+    src: backup.timer.j2
+    dest: /etc/systemd/system/blindstrader-backup.timer
+    owner: root
+    group: root
+    mode: '0644'
+  when: backup_enabled
+  notify: reload systemd
+  tags: [backups, systemd]
+
+- name: Enable and start backup timer
+  systemd:
+    name: blindstrader-backup.timer
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  when: backup_enabled
+  tags: [backups, systemd]
+
+- name: Disable backup timer (staging)
+  systemd:
+    name: blindstrader-backup.timer
+    enabled: no
+    state: stopped
+  when: not backup_enabled
+  failed_when: false
+  tags: [backups, systemd]

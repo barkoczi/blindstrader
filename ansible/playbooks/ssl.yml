@@ -1,0 +1,126 @@
+---
+# SSL Certificate Management Playbook
+# Usage: ansible-playbook -i inventory/prod.yml playbooks/ssl.yml
+
+- name: Obtain and Renew SSL Certificates
+  hosts: all
+  become: yes
+  gather_facts: no
+  
+  vars:
+    certbot_email: "admin@{{ domain }}"
+    certbot_domains:
+      - "{{ domain }}"
+      - "auth.{{ domain }}"
+      - "catalog.{{ domain }}"
+      - "insights.{{ domain }}"
+      - "prometheus.{{ domain }}"
+  
+  tasks:
+    - name: Check if certificates already exist
+      stat:
+        path: "/opt/blindstrader/nginx/certs/live/{{ domain }}/fullchain.pem"
+      register: cert_exists
+    
+    - name: Stop nginx for standalone certbot (first time only)
+      community.docker.docker_compose:
+        project_src: /opt/blindstrader
+        services:
+          - nginx
+        stopped: yes
+      when: not cert_exists.stat.exists
+      tags: [certbot]
+    
+    - name: Obtain SSL certificates (standalone mode - first time)
+      command: >
+        docker run --rm -v /opt/blindstrader/nginx/certs:/etc/letsencrypt
+        -p 80:80 certbot/certbot certonly --standalone
+        --email {{ certbot_email }}
+        --agree-tos --no-eff-email
+        -d {{ certbot_domains | join(' -d ') }}
+      when: not cert_exists.stat.exists
+      tags: [certbot]
+    
+    - name: Start nginx after obtaining certificates
+      community.docker.docker_compose:
+        project_src: /opt/blindstrader
+        services:
+          - nginx
+        state: present
+      when: not cert_exists.stat.exists
+      tags: [nginx]
+    
+    - name: Renew existing certificates (webroot mode)
+      command: >
+        docker run --rm 
+        -v /opt/blindstrader/nginx/certs:/etc/letsencrypt
+        -v /opt/blindstrader/certbot-webroot:/var/www/certbot
+        certbot/certbot renew --webroot --webroot-path=/var/www/certbot
+      when: cert_exists.stat.exists
+      register: renewal_result
+      tags: [certbot, renew]
+    
+    - name: Reload nginx after renewal
+      community.docker.docker_compose:
+        project_src: /opt/blindstrader
+        services:
+          - nginx
+        restarted: yes
+      when: 
+        - cert_exists.stat.exists
+        - renewal_result is changed
+      tags: [nginx]
+    
+    - name: Create systemd timer for auto-renewal
+      copy:
+        content: |
+          [Unit]
+          Description=Certbot Renewal Timer
+          
+          [Timer]
+          OnCalendar=daily
+          OnCalendar=02:00
+          Persistent=true
+          
+          [Install]
+          WantedBy=timers.target
+        dest: /etc/systemd/system/certbot-renewal.timer
+        mode: '0644'
+      tags: [systemd]
+    
+    - name: Create systemd service for auto-renewal
+      copy:
+        content: |
+          [Unit]
+          Description=Certbot Renewal Service
+          After=docker.service
+          
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/docker run --rm -v /opt/blindstrader/nginx/certs:/etc/letsencrypt -v /opt/blindstrader/certbot-webroot:/var/www/certbot certbot/certbot renew --webroot --webroot-path=/var/www/certbot
+          ExecStartPost=/usr/local/bin/docker-compose -f /opt/blindstrader/docker-compose.yml restart nginx
+        dest: /etc/systemd/system/certbot-renewal.service
+        mode: '0644'
+      tags: [systemd]
+    
+    - name: Enable certbot renewal timer
+      systemd:
+        name: certbot-renewal.timer
+        enabled: yes
+        state: started
+        daemon_reload: yes
+      tags: [systemd]
+    
+    - name: Display SSL status
+      debug:
+        msg:
+          - "=========================================="
+          - "SSL Certificate Status"
+          - "Environment: {{ environment }}"
+          - "Domain: {{ domain }}"
+          - "=========================================="
+          - "Certificates configured for:"
+          - "{{ certbot_domains }}"
+          - "=========================================="
+          - "Auto-renewal: ENABLED (daily at 02:00 UTC)"
+          - "=========================================="

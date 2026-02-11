@@ -1,0 +1,31 @@
+# Production Environment Configuration
+# Copy this file to terraform.tfvars and fill in your values
+
+# SSH public key for EC2 access
+# Generate with: ssh-keygen -t rsa -b 4096 -f ~/.ssh/prod-key
+ssh_public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC... your-public-key-here"
+
+# Optional: Sentry DSN for error tracking
+# sentry_dsn = "https://your-sentry-dsn@sentry.io/project-id"
+
+# CNAME records for third-party services
+cname_records = {
+  "app"    = "blinds-lead-manager.lovable.app"     # Appointment booking app
+  "portal" = "blinds-order-manager.lovable.app"    # Retailer/supplier app
+}
+
+# Optional: Add more CNAME records
+# cname_records = {
+#   "app"     = "blinds-level-manager.lovable.app"
+#   "portal"  = "blinds-order-manager.lovable.app"
+#   "help"    = "blindstrader.zendesk.com"
+#   "docs"    = "blindstrader.gitbook.io"
+# }
+
+# Optional: Override default instance type
+# instance_type = "t3a.large"
+
+# Optional: Override EBS volume sizes
+# ebs_mysql_size = 30
+# ebs_redis_size = 15
+# ebs_monitoring_size = 20

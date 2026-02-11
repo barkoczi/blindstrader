@@ -1,0 +1,28 @@
+---
+- name: Reload Prometheus
+  community.docker.docker_compose:
+    project_src: /opt/blindstrader
+    services:
+      - prometheus
+    restarted: yes
+
+- name: Reload Grafana
+  community.docker.docker_compose:
+    project_src: /opt/blindstrader
+    services:
+      - grafana
+    restarted: yes
+
+- name: Reload Loki
+  community.docker.docker_compose:
+    project_src: /opt/blindstrader
+    services:
+      - loki
+    restarted: yes
+
+- name: Reload Promtail
+  community.docker.docker_compose:
+    project_src: /opt/blindstrader
+    services:
+      - promtail
+    restarted: yes

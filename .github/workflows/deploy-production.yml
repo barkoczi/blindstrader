@@ -1,0 +1,73 @@
+name: Deploy to Production
+
+on:
+  push:
+    tags:
+      - 'prod-v*'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Ansible
+        run: |
+          pip install ansible
+          ansible-galaxy collection install community.docker
+      
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}" > ~/.ssh/blindstrader-ansible-key
+          chmod 600 ~/.ssh/blindstrader-ansible-key
+          ssh-keyscan -H ${{ secrets.PROD_HOST_IP }} >> ~/.ssh/known_hosts
+      
+      - name: Update inventory with production IP
+        run: |
+          cd ansible
+          sed -i "s/ansible_host:.*/ansible_host: ${{ secrets.PROD_HOST_IP }}/" inventory/prod.yml
+      
+      - name: Run Ansible deployment
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: False
+        run: |
+          cd ansible
+          ansible-playbook -i inventory/prod.yml playbooks/deploy-app.yml \
+            -e "version=${{ github.ref_name }}" \
+            -e "github_token=${{ secrets.GH_PAT }}" \
+            -v
+      
+      - name: Verify deployment
+        run: |
+          echo "Waiting for services to be healthy..."
+          sleep 30
+          curl -f https://auth.blindstrader.com/health || exit 1
+          curl -f https://catalog.blindstrader.com/health || exit 1
+      
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "✅ Production deployment successful: ${{ github.ref_name }}"
+          # TODO: Add Slack/Discord notification
+      
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed! Initiating rollback..."
+          cd ansible
+          # Get previous version from git tags
+          PREVIOUS_VERSION=$(git tag --sort=-version:refname | grep "prod-v" | sed -n '2p')
+          echo "Rolling back to $PREVIOUS_VERSION"
+          ansible-playbook -i inventory/prod.yml playbooks/rollback.yml \
+            -e "version=$PREVIOUS_VERSION" \
+            -e "confirm_rollback.user_input=yes"

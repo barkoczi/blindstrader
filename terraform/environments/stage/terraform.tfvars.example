@@ -1,0 +1,31 @@
+# Staging Environment Configuration
+# Copy this file to terraform.tfvars and fill in your values
+
+# SSH public key for EC2 access (for direct SSH)
+# Generate with: ssh-keygen -t rsa -b 4096 -f ~/.ssh/stage-key
+ssh_public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC... your-public-key-here"
+
+# Ansible SSH public key (for automation)
+# Generate with: ssh-keygen -t rsa -b 4096 -f ~/.ssh/blindstrader-ansible-key -C "ansible-automation"
+# Copy the content from: cat ~/.ssh/blindstrader-ansible-key.pub
+ansible_ssh_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC... ansible-automation"
+
+# Optional: Customize auto-shutdown schedule (cron format in UTC)
+# shutdown_cron_start = "0 20 * * *"  # Stop at 8 PM UTC daily
+# shutdown_cron_stop = "0 6 * * *"    # Start at 6 AM UTC daily
+
+# Optional: Disable auto-shutdown (instance runs 24/7)
+# enable_auto_shutdown = false
+
+# Optional: Override default instance type
+# instance_type = "t3a.medium"
+
+# Optional: Sentry DSN for error tracking
+# sentry_dsn = "https://your-sentry-dsn@sentry.io/project-id"
+
+# Optional: CNAME records for third-party services
+# Note: Typically you'd use same apps as production or dedicated staging instances
+# cname_records = {
+#   "app"    = "blinds-lead-manager.lovable.app"
+#   "portal" = "blinds-order-manager.lovable.app"
+# }

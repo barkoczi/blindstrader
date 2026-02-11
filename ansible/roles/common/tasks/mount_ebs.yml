@@ -1,0 +1,39 @@
+---
+# Mount EBS volumes
+
+- name: Check if volume device exists
+  stat:
+    path: "{{ volume.device }}"
+  register: device_stat
+
+- name: Create filesystem on EBS volume if not exists
+  filesystem:
+    fstype: "{{ volume.fstype }}"
+    dev: "{{ volume.device }}"
+  when: 
+    - device_stat.stat.exists
+    - device_stat.stat.isblk is defined
+    - device_stat.stat.isblk
+  ignore_errors: yes  # May already have filesystem
+
+- name: Create mount point
+  file:
+    path: "{{ volume.mount }}"
+    state: directory
+    mode: '0755'
+
+- name: Mount EBS volume
+  mount:
+    path: "{{ volume.mount }}"
+    src: "{{ volume.device }}"
+    fstype: "{{ volume.fstype }}"
+    state: mounted
+    opts: defaults,nofail
+  when: device_stat.stat.exists
+
+- name: Set correct permissions on mount
+  file:
+    path: "{{ volume.mount }}"
+    state: directory
+    mode: '0755'
+    recurse: no

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily BlindStrader Backup Timer ({{ environment }})
+
+[Timer]
+OnCalendar=daily
+OnCalendar={{ backup_time }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,8 @@
+---
+- name: Reload nginx container
+  community.docker.docker_compose:
+    project_src: /opt/blindstrader
+    services:
+      - nginx
+    restarted: yes
+  tags: [nginx]

@@ -1,0 +1,132 @@
+---
+# Application role - Deploy and manage application services
+
+- name: Retrieve secrets from AWS Secrets Manager
+  block:
+    - name: Get database password
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ environment }}/db_password \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: db_password_secret
+      no_log: true
+      changed_when: false
+
+    - name: Get Redis password
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ environment }}/redis_password \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: redis_password_secret
+      no_log: true
+      changed_when: false
+      failed_when: false
+
+    - name: Get Laravel APP_KEY
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ environment }}/app_key \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: app_key_secret
+      no_log: true
+      changed_when: false
+
+    - name: Get Grafana admin password
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ environment }}/grafana_admin_password \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: grafana_password_secret
+      no_log: true
+      changed_when: false
+  tags: [app, secrets]
+
+- name: Create environment file
+  template:
+    src: .env.j2
+    dest: /opt/blindstrader/.env
+    owner: ansible
+    group: ansible
+    mode: '0600'
+  no_log: true
+  tags: [app, config]
+
+- name: Deploy docker-compose configuration
+  template:
+    src: docker-compose.yml.j2
+    dest: /opt/blindstrader/docker-compose.yml
+    owner: ansible
+    group: ansible
+    mode: '0644'
+  tags: [app, config]
+
+- name: Pull latest Docker images
+  community.docker.docker_compose:
+    project_src: /opt/blindstrader
+    pull: yes
+  tags: [app, deploy]
+
+- name: Start Docker Compose services
+  community.docker.docker_compose:
+    project_src: /opt/blindstrader
+    state: present
+  tags: [app, deploy]
+
+- name: Wait for MySQL to be ready
+  wait_for:
+    host: localhost
+    port: 3306
+    delay: 5
+    timeout: 60
+  tags: [app, deploy]
+
+- name: Wait for Redis to be ready
+  wait_for:
+    host: localhost
+    port: 6379
+    delay: 5
+    timeout: 60
+  tags: [app, deploy]
+
+- name: Run database migrations for user-management
+  community.docker.docker_container_exec:
+    container: user-management
+    command: php artisan migrate --force
+  register: user_mgmt_migration
+  failed_when: false
+  tags: [app, deploy, migrations]
+
+- name: Run database migrations for catalog
+  community.docker.docker_container_exec:
+    container: catalog
+    command: php artisan migrate --force
+  register: catalog_migration
+  failed_when: false
+  tags: [app, deploy, migrations]
+
+- name: Display migration results
+  debug:
+    msg: 
+      - "User Management Migrations: {{ user_mgmt_migration.stdout | default('N/A') }}"
+      - "Catalog Migrations: {{ catalog_migration.stdout | default('N/A') }}"
+  tags: [app, deploy, migrations]
+
+- name: Verify all services are running
+  community.docker.docker_compose:
+    project_src: /opt/blindstrader
+    services: "{{ services }}"
+  register: service_status
+  tags: [app, health]
+
+- name: Display service status
+  debug:
+    var: service_status
+  tags: [app, health]

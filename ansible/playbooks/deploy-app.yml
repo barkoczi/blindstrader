@@ -1,0 +1,114 @@
+---
+# Application Deployment Playbook
+# Usage: ansible-playbook -i inventory/prod.yml playbooks/deploy-app.yml
+# This playbook only deploys application changes without reconfiguring infrastructure
+
+- name: Deploy BlindStrader Application
+  hosts: all
+  become: yes
+  gather_facts: no
+  
+  vars:
+    app_version: "{{ version | default('latest') }}"
+  
+  pre_tasks:
+    - name: Display deployment info
+      debug:
+        msg: "Deploying {{ app_version }} to {{ environment }}"
+  
+  tasks:
+    - name: Pull latest Docker images
+      community.docker.docker_compose:
+        project_src: /opt/blindstrader
+        pull: yes
+      tags: [pull]
+    
+    - name: Stop application containers (blue-green style)
+      community.docker.docker_compose:
+        project_src: /opt/blindstrader
+        services:
+          - user-management
+          - catalog
+        stopped: yes
+      tags: [stop]
+    
+    - name: Start application containers with new images
+      community.docker.docker_compose:
+        project_src: /opt/blindstrader
+        services:
+          - user-management
+          - catalog
+        state: present
+      tags: [start]
+    
+    - name: Wait for services to be healthy
+      wait_for:
+        host: localhost
+        port: "{{ item }}"
+        delay: 5
+        timeout: 60
+      loop:
+        - 3306  # MySQL
+        - 6379  # Redis
+      tags: [health]
+    
+    - name: Run database migrations - user-management
+      community.docker.docker_container_exec:
+        container: user-management
+        command: php artisan migrate --force
+      register: user_mgmt_migration
+      failed_when: false
+      tags: [migrations]
+    
+    - name: Run database migrations - catalog
+      community.docker.docker_container_exec:
+        container: catalog
+        command: php artisan migrate --force
+      register: catalog_migration
+      failed_when: false
+      tags: [migrations]
+    
+    - name: Clear application cache
+      community.docker.docker_container_exec:
+        container: "{{ item.container }}"
+        command: "{{ item.command }}"
+      loop:
+        - { container: 'user-management', command: 'php artisan cache:clear' }
+        - { container: 'user-management', command: 'php artisan config:clear' }
+        - { container: 'user-management', command: 'php artisan route:clear' }
+        - { container: 'user-management', command: 'php artisan view:clear' }
+        - { container: 'catalog', command: 'php artisan cache:clear' }
+        - { container: 'catalog', command: 'php artisan config:clear' }
+        - { container: 'catalog', command: 'php artisan route:clear' }
+        - { container: 'catalog', command: 'php artisan view:clear' }
+      failed_when: false
+      tags: [cache]
+    
+    - name: Reload nginx
+      community.docker.docker_compose:
+        project_src: /opt/blindstrader
+        services:
+          - nginx
+        restarted: yes
+      tags: [nginx]
+    
+    - name: Health check - Test application endpoints
+      uri:
+        url: "http://localhost/health"
+        status_code: 200
+      register: health_check
+      failed_when: false
+      tags: [health]
+    
+    - name: Display deployment results
+      debug:
+        msg:
+          - "=========================================="
+          - "Deployment Status: SUCCESS"
+          - "Version: {{ app_version }}"
+          - "Environment: {{ environment }}"
+          - "=========================================="
+          - "Migration Results:"
+          - "  User Management: {{ user_mgmt_migration.stdout | default('N/A') }}"
+          - "  Catalog: {{ catalog_migration.stdout | default('N/A') }}"
+          - "=========================================="

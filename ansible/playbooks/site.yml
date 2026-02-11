@@ -1,0 +1,70 @@
+---
+# Main Playbook - Complete Infrastructure Setup
+# Usage: ansible-playbook -i inventory/prod.yml playbooks/site.yml
+
+- name: Configure BlindStrader Infrastructure
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  pre_tasks:
+    - name: Display target environment
+      debug:
+        msg: "Configuring {{ inventory_hostname }} for {{ environment }} environment"
+    
+    - name: Wait for system to be ready
+      wait_for_connection:
+        delay: 5
+        timeout: 300
+    
+    - name: Gather facts
+      setup:
+  
+  roles:
+    - role: common
+      tags: [common, base]
+      
+    - role: docker
+      tags: [docker]
+      
+    - role: nginx
+      tags: [nginx]
+      
+    - role: monitoring
+      tags: [monitoring]
+      
+    - role: backups
+      tags: [backups]
+      when: backup_enabled | default(false)
+      
+    - role: app
+      tags: [app, deploy]
+  
+  post_tasks:
+    - name: Verify all Docker containers are running
+      community.docker.docker_container_info:
+        name: "{{ item }}"
+      loop:
+        - mysql
+        - redis
+        - user-management
+        - catalog
+        - nginx
+        - prometheus
+        - grafana
+      register: container_status
+      
+    - name: Display deployment summary
+      debug:
+        msg:
+          - "=========================================="
+          - "Deployment completed successfully!"
+          - "Environment: {{ environment }}"
+          - "Domain: {{ domain }}"
+          - "=========================================="
+          - "Next steps:"
+          - "1. Verify DNS propagation"
+          - "2. Obtain SSL certificates (see docs/ANSIBLE_DEPLOYMENT.md)"
+          - "3. Test application endpoints"
+          - "4. Access monitoring at https://insights.{{ domain }}"
+          - "=========================================="

@@ -1,37 +1,66 @@
 # BlindStrader
 
-A multi-service Laravel 12 application built with Docker, featuring microservices architecture with shared authentication.
+A multi-service Laravel application with microservices architecture, Docker containerization, and automated CI/CD pipeline.
 
-## Architecture
+## 🏗️ Architecture
 
--   **Auth Service** (`auth.blindstrader.test`): User management and authentication with Filament admin panel
--   **Catalog Service** (`catalog.blindstrader.test`): Catalog management with Filament admin panel and API
--   **Shared Redis Sessions**: Cross-service authentication
--   **MySQL 8**: Single database instance with separate schemas
--   **Nginx**: Reverse proxy with subdomain routing
+### Services
+-   **Auth Service** (`auth.blindstrader.com`): User management and authentication
+-   **Catalog Service** (`catalog.blindstrader.com`): Catalog management and API
+-   **Monitoring** (`insights.blindstrader.com`): Grafana dashboards
+-   **Metrics** (`prometheus.blindstrader.com`): Prometheus metrics
 
-## Features
+### Infrastructure
+-   **Cloud**: AWS (EC2, S3, Route53, Secrets Manager)
+-   **Infrastructure as Code**: Terraform
+-   **Configuration Management**: Ansible
+-   **CI/CD**: GitHub Actions
+-   **Containerization**: Docker, Docker Compose
+-   **Web Server**: Nginx with Let's Encrypt SSL
+-   **Databases**: MySQL 8, Redis 7
+-   **Monitoring**: Prometheus, Grafana, Loki, Promtail
 
+## ✨ Features
+
+### Development
 -   ✅ Docker Compose orchestration
--   ✅ Multi-architecture Docker images (linux/amd64, linux/arm64)
--   ✅ Subdomain-based routing
--   ✅ Shared session management via Redis
--   ✅ Automatic database migrations on startup
--   ✅ Laravel 12 with PHP 8.3
--   ✅ Local development with Valet integration
--   ✅ Comprehensive monitoring stack (Prometheus, Grafana, Loki, Sentry)
--   ✅ Detailed metrics and logging with cardinality management
--   ✅ Pre-configured dashboards and alerting rules
+-   ✅ Hot-reload for local development
+-   ✅ Shared Redis sessions across services
+-   ✅ Automatic database migrations
+-   ✅ Laravel 12 with PHP 8.2
 
-## Quick Start
+### Infrastructure
+-   ✅ Automated AWS provisioning via Terraform
+-   ✅ Configuration management with Ansible
+-   ✅ Separate production and staging environments
+-   ✅ Auto-shutdown scheduling for staging (50-70% cost savings)
+-   ✅ Automated backups with GPG encryption to S3
+
+### CI/CD Pipeline
+-   ✅ Automated testing on every push/PR
+-   ✅ Docker image building and pushing to ghcr.io
+-   ✅ Automated deployments to staging (on develop push)
+-   ✅ Tagged deployments to production (with approval)
+-   ✅ Automatic rollback on deployment failures
+-   ✅ Health checks and verification
+
+### Monitoring & Observability
+-   ✅ Prometheus metrics collection
+-   ✅ Grafana dashboards
+-   ✅ Loki log aggregation
+-   ✅ Application performance monitoring
+-   ✅ Alert rules and notifications
+
+## 🚀 Quick Start
+
+### Local Development
 
 ### Prerequisites
 
 -   Docker & Docker Compose
--   dnsmasq or Laravel Valet (for local development)
--   GitHub Container Registry access (for pulling images)
+-   For production deployment: AWS account, Terraform, Ansible
 
-### Setup
+### Local Development Setup
 
 1.  **Clone the repository**
     
@@ -59,11 +88,59 @@ A multi-service Laravel 12 application built with Docker, featuring microservice
     
 5.  **Access the application**
     
-    -   Auth service: [https://auth.blindstrader.test](https://auth.blindstrader.test)
-    -   Catalog service: [https://catalog.blindstrader.test](https://catalog.blindstrader.test)
-    -   Root redirect: [https://blindstrader.test](https://blindstrader.test)
-    -   Grafana (Insights): [https://insights.blindstrader.test](https://insights.blindstrader.test) (admin/admin)
-    -   Prometheus: [https://prometheus.blindstrader.test](https://prometheus.blindstrader.test)
+    -   Auth service: http://localhost:8080 (or via Valet)
+    -   Catalog service: http://localhost:8080 (or via Valet)
+    -   Grafana: http://localhost:3000 (admin/admin)
+    -   Prometheus: http://localhost:9090
+
+### Production Deployment
+
+See comprehensive guides in the `docs/` directory:
+
+1. **[PRE_DEPLOYMENT.md](docs/PRE_DEPLOYMENT.md)** - Prerequisites and preparation
+2. **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Infrastructure deployment with Terraform
+3. **[ANSIBLE_DEPLOYMENT.md](docs/ANSIBLE_DEPLOYMENT.md)** - Configuration with Ansible
+4. **[GITHUB_ACTIONS.md](docs/GITHUB_ACTIONS.md)** - CI/CD pipeline setup
+5. **[COMPLETE_WORKFLOW.md](docs/COMPLETE_WORKFLOW.md)** - End-to-end workflow
+
+**Quick overview**:
+```bash
+# 1. Provision infrastructure
+cd terraform/environments/prod
+terraform init && terraform apply
+
+# 2. Configure server
+cd ../../ansible
+ansible-playbook -i inventory/prod.yml playbooks/site.yml
+
+# 3. Obtain SSL certificates
+ansible-playbook -i inventory/prod.yml playbooks/ssl.yml
+
+# 4. Deploy application (via GitHub Actions or manually)
+ansible-playbook -i inventory/prod.yml playbooks/deploy-app.yml
+```
+
+## 📚 Documentation
+
+### Infrastructure & Deployment
+- [PRE_DEPLOYMENT.md](docs/PRE_DEPLOYMENT.md) - Prerequisites, AWS setup, secrets configuration
+- [DEPLOYMENT.md](docs/DEPLOYMENT.md) - Terraform infrastructure deployment
+- [ANSIBLE_DEPLOYMENT.md](docs/ANSIBLE_DEPLOYMENT.md) - Ansible configuration management
+- [GITHUB_ACTIONS.md](docs/GITHUB_ACTIONS.md) - CI/CD pipeline with GitHub Actions
+- [COMPLETE_WORKFLOW.md](docs/COMPLETE_WORKFLOW.md) - Complete development to production workflow
+- [DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md) - Backup restoration procedures
+- [GIT_WORKFLOW.md](docs/GIT_WORKFLOW.md) - Git branching and versioning strategy
+
+### Quick References
+- [ansible/README.md](ansible/README.md) - Ansible quick start
+- [ANSIBLE_IMPLEMENTATION_SUMMARY.md](ANSIBLE_IMPLEMENTATION_SUMMARY.md) - Implementation overview
+
+### Infrastructure Specs
+- **Environments**: Production and Staging on AWS
+- **Instance Types**: t3a.medium (prod), t3a.small (stage)
+- **Regions**: eu-west-2 (London)
+- **Estimated Cost**: $50-66/month for both environments
+- **Backup**: Nightly encrypted backups to S3 (production only)
 
 ## Services
 

@@ -1,0 +1,88 @@
+---
+# Monitoring role - Configure Prometheus, Grafana, Loki stack
+
+- name: Create monitoring data directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: '65534'  # nobody user for prometheus
+    group: '65534'
+    mode: '0755'
+  loop:
+    - /var/lib/monitoring/prometheus
+    - /var/lib/monitoring/grafana
+    - /var/lib/monitoring/loki
+  tags: [monitoring]
+
+- name: Deploy Prometheus configuration
+  copy:
+    src: ../../../monitoring/prometheus/prometheus.yml
+    dest: /opt/blindstrader/monitoring/prometheus/
+    owner: ansible
+    group: ansible
+    mode: '0644'
+  notify: reload prometheus
+  tags: [monitoring, prometheus]
+
+- name: Deploy Prometheus alerts
+  copy:
+    src: ../../../monitoring/prometheus/alerts.yml
+    dest: /opt/blindstrader/monitoring/prometheus/
+    owner: ansible
+    group: ansible
+    mode: '0644'
+  notify: reload prometheus
+  tags: [monitoring, prometheus]
+
+- name: Deploy Loki configuration
+  copy:
+    src: ../../../monitoring/loki/loki-config.yml
+    dest: /opt/blindstrader/monitoring/loki/
+    owner: ansible
+    group: ansible
+    mode: '0644'
+  notify: reload loki
+  tags: [monitoring, loki]
+
+- name: Deploy Promtail configuration
+  copy:
+    src: ../../../monitoring/promtail/promtail-config.yml
+    dest: /opt/blindstrader/monitoring/promtail/
+    owner: ansible
+    group: ansible
+    mode: '0644'
+  notify: reload promtail
+  tags: [monitoring, promtail]
+
+- name: Create Grafana provisioning directories
+  file:
+    path: "/opt/blindstrader/monitoring/grafana/provisioning/{{ item }}"
+    state: directory
+    owner: '472'  # grafana user
+    group: '472'
+    mode: '0755'
+  loop:
+    - dashboards
+    - datasources
+  tags: [monitoring, grafana]
+
+- name: Deploy Grafana datasources
+  copy:
+    src: ../../../monitoring/grafana/provisioning/datasources/
+    dest: /opt/blindstrader/monitoring/grafana/provisioning/datasources/
+    owner: '472'
+    group: '472'
+    mode: '0644'
+  notify: reload grafana
+  tags: [monitoring, grafana]
+
+- name: Deploy Grafana dashboards
+  copy:
+    src: ../../../monitoring/grafana/provisioning/dashboards/
+    dest: /opt/blindstrader/monitoring/grafana/provisioning/dashboards/
+    owner: '472'
+    group: '472'
+    mode: '0644'
+  when: lookup('fileglob', '../../../monitoring/grafana/provisioning/dashboards/*') | length > 0
+  notify: reload grafana
+  tags: [monitoring, grafana]

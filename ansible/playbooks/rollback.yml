@@ -1,0 +1,112 @@
+---
+# Rollback Playbook
+# Usage: ansible-playbook -i inventory/prod.yml playbooks/rollback.yml -e "rollback_version=prod-v1.0.0"
+
+- name: Rollback BlindStrader Application
+  hosts: all
+  become: yes
+  gather_facts: no
+  
+  vars:
+    rollback_version: "{{ version | mandatory }}"
+  
+  pre_tasks:
+    - name: Confirm rollback version
+      pause:
+        prompt: "Are you sure you want to rollback to {{ rollback_version }}? (yes/no)"
+      register: confirm_rollback
+    
+    - name: Abort if not confirmed
+      fail:
+        msg: "Rollback aborted by user"
+      when: confirm_rollback.user_input | lower != 'yes'
+  
+  tasks:
+    - name: Display rollback info
+      debug:
+        msg: "Rolling back {{ environment }} to version {{ rollback_version }}"
+    
+    - name: Create backup of current state
+      community.docker.docker_container_exec:
+        container: mysql
+        command: mysqldump --all-databases --single-transaction
+      register: db_backup
+      tags: [backup]
+    
+    - name: Save backup to file
+      copy:
+        content: "{{ db_backup.stdout }}"
+        dest: "/tmp/pre-rollback-backup-{{ ansible_date_time.epoch }}.sql"
+      tags: [backup]
+    
+    - name: Pull specific version images
+      community.docker.docker_image:
+        name: "{{ item.image }}"
+        tag: "{{ rollback_version }}"
+        source: pull
+      loop:
+        - { image: 'ghcr.io/barkoczi/blindstrader-user-management' }
+        - { image: 'ghcr.io/barkoczi/blindstrader-catalog' }
+      tags: [pull]
+    
+    - name: Update docker-compose to use rollback version
+      replace:
+        path: /opt/blindstrader/docker-compose.yml
+        regexp: ':latest$'
+        replace: ':{{ rollback_version }}'
+      tags: [config]
+    
+    - name: Stop application services
+      community.docker.docker_compose:
+        project_src: /opt/blindstrader
+        services:
+          - user-management
+          - catalog
+        stopped: yes
+      tags: [stop]
+    
+    - name: Start services with rollback version
+      community.docker.docker_compose:
+        project_src: /opt/blindstrader
+        services:
+          - user-management
+          - catalog
+        state: present
+      tags: [start]
+    
+    - name: Wait for services to be ready
+      wait_for:
+        host: localhost
+        port: "{{ item }}"
+        delay: 5
+        timeout: 60
+      loop:
+        - 3306
+        - 6379
+      tags: [health]
+    
+    - name: Health check
+      uri:
+        url: "http://localhost/health"
+        status_code: 200
+      register: health_check
+      retries: 5
+      delay: 10
+      until: health_check.status == 200
+      failed_when: false
+      tags: [health]
+    
+    - name: Display rollback results
+      debug:
+        msg:
+          - "=========================================="
+          - "Rollback Status: {{ 'SUCCESS' if health_check.status == 200 else 'FAILED' }}"
+          - "Rolled back to: {{ rollback_version }}"
+          - "Environment: {{ environment }}"
+          - "Backup saved to: /tmp/pre-rollback-backup-{{ ansible_date_time.epoch }}.sql"
+          - "=========================================="
+    
+    - name: Send rollback notification
+      debug:
+        msg: "Send notification to team about rollback to {{ rollback_version }}"
+      # TODO: Integrate with Slack/Email/PagerDuty
