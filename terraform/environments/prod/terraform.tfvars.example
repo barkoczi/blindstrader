@@ -29,3 +29,13 @@ cname_records = {
 # ebs_mysql_size = 30
 # ebs_redis_size = 15
 # ebs_monitoring_size = 20
+
+# Staging nameservers for subdomain delegation (stage.blindstrader.com)
+# Get these from: cd ../stage && terraform output route53_name_servers
+# This creates NS records in production zone to delegate stage.blindstrader.com
+staging_nameservers = [
+  "ns-1392.awsdns-46.org",
+  "ns-1700.awsdnes-20.co.uk",
+  "ns-267.awsdns-33.com",
+  "ns-596.awsdnes-10.net"
+]

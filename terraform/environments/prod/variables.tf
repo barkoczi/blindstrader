@@ -110,3 +110,9 @@ variable "github_token" {
   default     = ""
   sensitive   = true
 }
+
+variable "staging_nameservers" {
+  description = "Staging environment nameservers for NS delegation (optional)"
+  type        = list(string)
+  default     = []
+}

@@ -8,11 +8,6 @@ output "elastic_ip" {
   value       = module.security.elastic_ip
 }
 
-output "route53_name_servers" {
-  description = "Route53 name servers - Configure these at your domain registrar"
-  value       = module.dns.name_servers
-}
-
 output "auto_shutdown_schedule" {
   description = "Auto-shutdown schedule"
   value = var.enable_auto_shutdown ? {
@@ -29,8 +24,11 @@ output "ssh_command" {
 output "deployment_info" {
   description = "Post-deployment instructions"
   value       = <<-EOT
-    1. Configure NS records at your domain registrar:
-       ${join("\n       ", module.dns.name_servers)}
+    1. Add DNS A records in Cloudflare (see docs/cloudflare-dns-import.txt):
+       - auth.stage.${var.domain} -> ${module.security.elastic_ip}
+       - catalog.stage.${var.domain} -> ${module.security.elastic_ip}
+       - insights.stage.${var.domain} -> ${module.security.elastic_ip}
+       - prometheus.stage.${var.domain} -> ${module.security.elastic_ip}
     
     2. Create secrets in AWS Secrets Manager:
        - /blindstrader/shared/gpg_public_key (if not already created)

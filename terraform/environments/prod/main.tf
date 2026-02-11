@@ -66,15 +66,6 @@ module "storage" {
   ] : []
 }
 
-module "dns" {
-  source = "../../modules/dns"
-
-  environment    = var.environment
-  domain         = var.domain
-  elastic_ip     = module.security.elastic_ip
-  cname_records  = var.cname_records
-}
-
 module "lambda_scheduler" {
   source = "../../modules/lambda-scheduler"
 

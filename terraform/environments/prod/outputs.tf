@@ -8,11 +8,6 @@ output "elastic_ip" {
   value       = module.security.elastic_ip
 }
 
-output "route53_name_servers" {
-  description = "Route53 name servers - Configure these at your domain registrar"
-  value       = module.dns.name_servers
-}
-
 output "s3_backup_bucket" {
   description = "S3 backup bucket name"
   value       = module.storage.s3_bucket_name
@@ -50,8 +45,11 @@ output "deployment_info" {
     
     Next Steps:
     
-    1. Update DNS at your registrar with these nameservers:
-       ${join("\n       ", module.dns.name_servers)}
+    1. Add DNS A records in Cloudflare (see docs/cloudflare-dns-import.txt):
+       - auth.${var.domain} -> ${module.security.elastic_ip}
+       - catalog.${var.domain} -> ${module.security.elastic_ip}
+       - insights.${var.domain} -> ${module.security.elastic_ip}
+       - prometheus.${var.domain} -> ${module.security.elastic_ip}
     
     2. Update Ansible inventory file:
        Edit: ../../ansible/inventory/${var.environment}.yml
