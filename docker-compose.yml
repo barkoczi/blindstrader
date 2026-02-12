@@ -293,7 +293,10 @@ networks:
   blindstrader:
     driver: bridge
 
-voredis_data:
+volumes:
+  db_data:
+    driver: local
+  redis_data:
     driver: local
   prometheus_data:
     driver: local
@@ -301,8 +304,5 @@ voredis_data:
     driver: local
   loki_data:
     driver: local
-  certbot_webroot local
-  grafana_data:
-    driver: local
-  loki_data:
+  certbot_webroot:
     driver: local

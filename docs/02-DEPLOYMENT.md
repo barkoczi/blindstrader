@@ -96,91 +96,43 @@ Check if the user-data script completed successfully:
 sudo tail -100 /var/log/cloud-init-output.log
 
 # Look for the completion message
-sudo grep "BlindStrader EC2 initialization completed" /var/log/cloud-init-output.log
+sudo grep "Minimal setup complete" /var/log/cloud-init-output.log
 
-# Verify Docker is installed
-docker --version
-docker-compose --version
+# Verify completion marker file exists
+ls -la /var/log/user-data-complete
 
-# Check if volumes are mounted
-df -h | grep -E 'mysql|redis|monitoring'
+# Verify Python 3 is installed (required for Ansible)
+python3 --version
 
-# Verify .env file was created
-cat /opt/blindstrader/.env
+# Verify AWS CLI is installed
+aws --version
 
-# Check htpasswd file
-cat /opt/blindstrader/.htpasswd
+# Check ansible user was created
+id ansible
 
-# Verify Docker services are running
-cd /opt/blindstrader
-docker-compose ps
+# Verify application directory exists
+ls -ld /opt/blindstrader
 ```
 
-If the user-data script is still running, wait a few minutes. The full initialization takes about 5-10 minutes.
+The user-data script should complete in 1-2 minutes. If the completion message is not found, wait a bit longer.
 
-### 8. Obtain SSL Certificates
+**Note**: The user-data script only prepares the instance. Application deployment happens via Ansible (see next section).
 
-**Note**: The application is already deployed by the user-data script. You just need to obtain SSL certificates.
+### 8. Deploy Application with Ansible
 
-#### Check if Services are Running
+**Important**: The EC2 instance is now ready but the application is not yet deployed. The Terraform deployment only created the infrastructure and prepared the instance for configuration.
 
-```bash
-cd /opt/blindstrader
-docker-compose ps
-```
+**Next step**: Continue with [03-ANSIBLE_DEPLOYMENT.md](03-ANSIBLE_DEPLOYMENT.md) to:
+- Update Ansible inventory with the Elastic IP
+- Deploy the full application stack (Docker, services, monitoring)
+- Obtain SSL certificates
+- Complete the deployment
 
-All services should be in "Up" status.
+The Ansible deployment takes approximately 10-15 minutes.
 
-#### First-Time Certificate Generation
+### 9. Verify Application Access
 
-```bash
-# Stop nginx temporarily
-docker-compose stop nginx
-
-# Run certbot in standalone mode for initial certificate
-docker-compose run --rm certbot certonly \
-    --standalone \
-    --preferred-challenges http \
-    --email admin@blindstrader.com \
-    --agree-tos \
-    --no-eff-email \
-    -d blindstrader.com \
-    -d auth.blindstrader.com \
-    -d catalog.blindstrader.com \
-    -d insights.blindstrader.com \
-    -d prometheus.blindstrader.com
-
-# For staging, use stage subdomain:
-# -d stage.blindstrader.com \
-# -d auth.stage.blindstrader.com \
-# etc.
-
-# Start nginx with SSL
-docker-compose up -d nginx
-```
-
-#### Verify SSL Certificates
-
-```bash
-# Check certificate files
-ls -la /opt/blindstrader/nginx/certs/live/blindstrader.com/
-
-# Should see:
-# - fullchain.pem
-# - privkey.pem
-# - cert.pem
-# - chain.pem
-```
-
-#### Test Certificate Renewal
-
-The certbot container will automatically renew certificates, but test it manually:
-
-```bash
-docker-compose run --rm certbot renew --dry-run
-```
-
-### 11. Verify Application Access
+**Note**: This step can only be completed after running Ansible playbooks (see step 8).
 
 Test each subdomain:
 
@@ -201,7 +153,7 @@ Or visit in your browser:
 - https://insights.blindstrader.com (requires basic auth)
 - https://prometheus.blindstrader.com (requires basic auth)
 
-### 12. Test Backup System (Production Only)
+### 10. Test Backup System (Production Only)
 
 ```bash
 # On the EC2 instance
@@ -215,7 +167,7 @@ sudo systemctl status blindstrader-backup.timer
 sudo systemctl list-timers | grep blindstrader
 ```
 
-### 13. Monitor Auto-Shutdown (Staging Only)
+### 11. Monitor Auto-Shutdown (Staging Only)
 
 For staging environment with auto-shutdown enabled:
 

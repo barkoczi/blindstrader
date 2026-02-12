@@ -10,7 +10,7 @@
   pre_tasks:
     - name: Display target environment
       debug:
-        msg: "Configuring {{ inventory_hostname }} for {{ environment }} environment"
+        msg: "Configuring {{ inventory_hostname }} for {{ app_environment }} environment"
     
     - name: Wait for system to be ready
       wait_for_connection:
@@ -59,7 +59,7 @@
         msg:
           - "=========================================="
           - "Deployment completed successfully!"
-          - "Environment: {{ environment }}"
+          - "Environment: {{ app_environment }}"
           - "Domain: {{ domain }}"
           - "=========================================="
           - "Next steps:"

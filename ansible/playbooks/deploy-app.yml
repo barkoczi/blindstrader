@@ -14,31 +14,25 @@
   pre_tasks:
     - name: Display deployment info
       debug:
-        msg: "Deploying {{ app_version }} to {{ environment }}"
+        msg: "Deploying {{ app_version }} to {{ app_environment }}"
   
   tasks:
     - name: Pull latest Docker images
-      community.docker.docker_compose:
-        project_src: /opt/blindstrader
-        pull: yes
+      shell: /usr/local/bin/docker-compose pull
+      args:
+        chdir: /opt/blindstrader
       tags: [pull]
     
     - name: Stop application containers (blue-green style)
-      community.docker.docker_compose:
-        project_src: /opt/blindstrader
-        services:
-          - user-management
-          - catalog
-        stopped: yes
+      shell: /usr/local/bin/docker-compose stop user-management catalog
+      args:
+        chdir: /opt/blindstrader
       tags: [stop]
     
     - name: Start application containers with new images
-      community.docker.docker_compose:
-        project_src: /opt/blindstrader
-        services:
-          - user-management
-          - catalog
-        state: present
+      shell: /usr/local/bin/docker-compose up -d user-management catalog
+      args:
+        chdir: /opt/blindstrader
       tags: [start]
     
     - name: Wait for services to be healthy
@@ -85,11 +79,9 @@
       tags: [cache]
     
     - name: Reload nginx
-      community.docker.docker_compose:
-        project_src: /opt/blindstrader
-        services:
-          - nginx
-        restarted: yes
+      shell: /usr/local/bin/docker-compose restart nginx
+      args:
+        chdir: /opt/blindstrader
       tags: [nginx]
     
     - name: Health check - Test application endpoints
@@ -106,7 +98,7 @@
           - "=========================================="
           - "Deployment Status: SUCCESS"
           - "Version: {{ app_version }}"
-          - "Environment: {{ environment }}"
+          - "Environment: {{ app_environment }}"
           - "=========================================="
           - "Migration Results:"
           - "  User Management: {{ user_mgmt_migration.stdout | default('N/A') }}"

@@ -26,7 +26,19 @@ services:
     image: redis:7-alpine
     container_name: redis
     restart: unless-stopped
-    command: redis-server --appendonly yes {% if redis_password_secret.stdout %}--requirepass ${REDIS_PASSWORD}{% endif %}
+{% if redis_password_secret.stdout %}
+    command: 
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD}
+{% else %}
+    command: 
+      - redis-server
+      - --appendonly
+      - "yes"
+{% endif %}
     volumes:
       - /var/lib/redis:/data
     ports:
@@ -73,6 +85,23 @@ services:
     networks:
       - blindstrader
 
+  # phpMyAdmin - Database Management
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: ${DB_PASSWORD}
+      UPLOAD_LIMIT: 100M
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - blindstrader
+
   # Nginx Web Server
   nginx:
     image: nginx:alpine
@@ -87,11 +116,10 @@ services:
       - ./nginx/certs:/etc/letsencrypt:ro
       - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
       - certbot_webroot:/var/www/certbot:ro
-      - ./services/user-management/public:/var/www/user-management/public:ro
-      - ./services/catalog/public:/var/www/catalog/public:ro
     depends_on:
       - user-management
       - catalog
+      - phpmyadmin
     networks:
       - blindstrader
 

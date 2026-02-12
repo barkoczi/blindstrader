@@ -19,7 +19,6 @@
   yum:
     name:
       - docker
-      - docker-compose-plugin
     state: present
   tags: [docker]
 
@@ -63,18 +62,9 @@
 
 - name: Install Python Docker SDK
   pip:
-    name:
-      - docker
-      - docker-compose
+    name: docker
     executable: pip3
     state: present
+    extra_args: --user
+  become_user: ansible
   tags: [docker, python]
-
-- name: Log into GitHub Container Registry
-  community.docker.docker_login:
-    registry: ghcr.io
-    username: "{{ github_username }}"
-    password: "{{ github_token }}"
-  when: github_token is defined
-  no_log: true
-  tags: [docker, registry]

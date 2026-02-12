@@ -10,11 +10,11 @@
   vars:
     certbot_email: "admin@{{ domain }}"
     certbot_domains:
-      - "{{ domain }}"
       - "auth.{{ domain }}"
       - "catalog.{{ domain }}"
       - "insights.{{ domain }}"
       - "prometheus.{{ domain }}"
+      - "pa.{{ domain }}"
   
   tasks:
     - name: Check if certificates already exist
@@ -23,11 +23,9 @@
       register: cert_exists
     
     - name: Stop nginx for standalone certbot (first time only)
-      community.docker.docker_compose:
-        project_src: /opt/blindstrader
-        services:
-          - nginx
-        stopped: yes
+      shell: /usr/local/bin/docker-compose stop nginx
+      args:
+        chdir: /opt/blindstrader
       when: not cert_exists.stat.exists
       tags: [certbot]
     
@@ -36,17 +34,15 @@
         docker run --rm -v /opt/blindstrader/nginx/certs:/etc/letsencrypt
         -p 80:80 certbot/certbot certonly --standalone
         --email {{ certbot_email }}
-        --agree-tos --no-eff-email
+        --agree-tos --no-eff-email --expand
         -d {{ certbot_domains | join(' -d ') }}
       when: not cert_exists.stat.exists
       tags: [certbot]
     
     - name: Start nginx after obtaining certificates
-      community.docker.docker_compose:
-        project_src: /opt/blindstrader
-        services:
-          - nginx
-        state: present
+      shell: /usr/local/bin/docker-compose up -d nginx
+      args:
+        chdir: /opt/blindstrader
       when: not cert_exists.stat.exists
       tags: [nginx]
     
@@ -61,11 +57,9 @@
       tags: [certbot, renew]
     
     - name: Reload nginx after renewal
-      community.docker.docker_compose:
-        project_src: /opt/blindstrader
-        services:
-          - nginx
-        restarted: yes
+      shell: /usr/local/bin/docker-compose restart nginx
+      args:
+        chdir: /opt/blindstrader
       when: 
         - cert_exists.stat.exists
         - renewal_result is changed
@@ -116,7 +110,7 @@
         msg:
           - "=========================================="
           - "SSL Certificate Status"
-          - "Environment: {{ environment }}"
+          - "Environment: {{ app_environment }}"
           - "Domain: {{ domain }}"
           - "=========================================="
           - "Certificates configured for:"

@@ -113,7 +113,8 @@ resource "aws_iam_role_policy" "ec2_secrets_access" {
         Effect = "Allow"
         Action = [
           "secretsmanager:GetSecretValue",
-          "secretsmanager:DescribeSecret"
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:ListSecrets"
         ]
         Resource = [
           "arn:aws:secretsmanager:${var.aws_region}:*:secret:/blindstrader/${var.environment}/*",

@@ -24,7 +24,7 @@
   tasks:
     - name: Display rollback info
       debug:
-        msg: "Rolling back {{ environment }} to version {{ rollback_version }}"
+        msg: "Rolling back {{ app_environment }} to version {{ rollback_version }}"
     
     - name: Create backup of current state
       community.docker.docker_container_exec:
@@ -57,21 +57,15 @@
       tags: [config]
     
     - name: Stop application services
-      community.docker.docker_compose:
-        project_src: /opt/blindstrader
-        services:
-          - user-management
-          - catalog
-        stopped: yes
+      shell: /usr/local/bin/docker-compose stop user-management catalog
+      args:
+        chdir: /opt/blindstrader
       tags: [stop]
     
     - name: Start services with rollback version
-      community.docker.docker_compose:
-        project_src: /opt/blindstrader
-        services:
-          - user-management
-          - catalog
-        state: present
+      shell: /usr/local/bin/docker-compose up -d user-management catalog
+      args:
+        chdir: /opt/blindstrader
       tags: [start]
     
     - name: Wait for services to be ready
@@ -102,7 +96,7 @@
           - "=========================================="
           - "Rollback Status: {{ 'SUCCESS' if health_check.status == 200 else 'FAILED' }}"
           - "Rolled back to: {{ rollback_version }}"
-          - "Environment: {{ environment }}"
+          - "Environment: {{ app_environment }}"
           - "Backup saved to: /tmp/pre-rollback-backup-{{ ansible_date_time.epoch }}.sql"
           - "=========================================="
     

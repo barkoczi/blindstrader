@@ -6,7 +6,7 @@
     - name: Get database password
       shell: |
         aws secretsmanager get-secret-value \
-          --secret-id /blindstrader/{{ environment }}/db_password \
+          --secret-id /blindstrader/{{ app_environment }}/db_password \
           --region eu-west-2 \
           --query SecretString \
           --output text
@@ -17,7 +17,7 @@
     - name: Get Redis password
       shell: |
         aws secretsmanager get-secret-value \
-          --secret-id /blindstrader/{{ environment }}/redis_password \
+          --secret-id /blindstrader/{{ app_environment }}/redis_password \
           --region eu-west-2 \
           --query SecretString \
           --output text
@@ -29,7 +29,7 @@
     - name: Get Laravel APP_KEY
       shell: |
         aws secretsmanager get-secret-value \
-          --secret-id /blindstrader/{{ environment }}/app_key \
+          --secret-id /blindstrader/{{ app_environment }}/app_key \
           --region eu-west-2 \
           --query SecretString \
           --output text
@@ -40,7 +40,7 @@
     - name: Get Grafana admin password
       shell: |
         aws secretsmanager get-secret-value \
-          --secret-id /blindstrader/{{ environment }}/grafana_admin_password \
+          --secret-id /blindstrader/{{ app_environment }}/grafana_admin_password \
           --region eu-west-2 \
           --query SecretString \
           --output text
@@ -68,16 +68,22 @@
     mode: '0644'
   tags: [app, config]
 
+- name: Login to GitHub Container Registry
+  shell: echo "{{ github_token }}" | docker login ghcr.io -u "{{ github_username }}" --password-stdin
+  when: github_token is defined and github_token | length > 0
+  no_log: true
+  tags: [app, deploy]
+
 - name: Pull latest Docker images
-  community.docker.docker_compose:
-    project_src: /opt/blindstrader
-    pull: yes
+  shell: /usr/local/bin/docker-compose pull
+  args:
+    chdir: /opt/blindstrader
   tags: [app, deploy]
 
 - name: Start Docker Compose services
-  community.docker.docker_compose:
-    project_src: /opt/blindstrader
-    state: present
+  shell: /usr/local/bin/docker-compose up -d
+  args:
+    chdir: /opt/blindstrader
   tags: [app, deploy]
 
 - name: Wait for MySQL to be ready
@@ -120,9 +126,9 @@
   tags: [app, deploy, migrations]
 
 - name: Verify all services are running
-  community.docker.docker_compose:
-    project_src: /opt/blindstrader
-    services: "{{ services }}"
+  shell: /usr/local/bin/docker-compose ps
+  args:
+    chdir: /opt/blindstrader
   register: service_status
   tags: [app, health]
 

@@ -47,7 +47,7 @@
 - name: Retrieve basic auth password from Secrets Manager
   shell: |
     aws secretsmanager get-secret-value \
-      --secret-id /blindstrader/{{ environment }}/basic_auth_password \
+      --secret-id /blindstrader/{{ app_environment }}/basic_auth_password \
       --region eu-west-2 \
       --query SecretString \
       --output text
