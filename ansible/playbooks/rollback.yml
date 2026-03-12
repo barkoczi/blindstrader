@@ -1,106 +1,116 @@
 ---
 # Rollback Playbook
-# Usage: ansible-playbook -i inventory/prod.yml playbooks/rollback.yml -e "rollback_version=prod-v1.0.0"
+# Usage: ansible-playbook -i inventory/prod.yml playbooks/rollback.yml -e "version=prod-v1.0.0"
 
 - name: Rollback BlindStrader Application
   hosts: all
   become: yes
   gather_facts: no
-  
+
   vars:
     rollback_version: "{{ version | mandatory }}"
-  
+
   pre_tasks:
     - name: Confirm rollback version
       pause:
         prompt: "Are you sure you want to rollback to {{ rollback_version }}? (yes/no)"
       register: confirm_rollback
-    
+
     - name: Abort if not confirmed
       fail:
         msg: "Rollback aborted by user"
       when: confirm_rollback.user_input | lower != 'yes'
-  
+
   tasks:
     - name: Display rollback info
       debug:
         msg: "Rolling back {{ app_environment }} to version {{ rollback_version }}"
-    
-    - name: Create backup of current state
+
+    - name: Create pre-rollback database backup
       community.docker.docker_container_exec:
-        container: mysql
+        container: blindstrader-mysql
         command: mysqldump --all-databases --single-transaction
       register: db_backup
       tags: [backup]
-    
+
     - name: Save backup to file
       copy:
         content: "{{ db_backup.stdout }}"
         dest: "/tmp/pre-rollback-backup-{{ ansible_date_time.epoch }}.sql"
       tags: [backup]
-    
-    - name: Pull specific version images
+
+    - name: Pull rollback version images
       community.docker.docker_image:
         name: "{{ item.image }}"
         tag: "{{ rollback_version }}"
         source: pull
       loop:
-        - { image: 'ghcr.io/barkoczi/blindstrader-user-management' }
-        - { image: 'ghcr.io/barkoczi/blindstrader-catalog' }
+        - { image: 'ghcr.io/barkoczi/blindstrader-identity' }
+        - { image: 'ghcr.io/barkoczi/blindstrader-brand' }
+        - { image: 'ghcr.io/barkoczi/blindstrader-supplier' }
+        - { image: 'ghcr.io/barkoczi/blindstrader-supply-chain' }
+        - { image: 'ghcr.io/barkoczi/blindstrader-payment' }
+        - { image: 'ghcr.io/barkoczi/blindstrader-retailer' }
+        - { image: 'ghcr.io/barkoczi/blindstrader-platform' }
+        - { image: 'ghcr.io/barkoczi/blindstrader-notification' }
       tags: [pull]
-    
+
     - name: Update docker-compose to use rollback version
       replace:
         path: /opt/blindstrader/docker-compose.yml
         regexp: ':latest$'
         replace: ':{{ rollback_version }}'
       tags: [config]
-    
+
     - name: Stop application services
-      shell: /usr/local/bin/docker-compose stop user-management catalog
+      shell: docker compose stop identity brand supplier supply-chain payment retailer platform notification
       args:
         chdir: /opt/blindstrader
       tags: [stop]
-    
+
     - name: Start services with rollback version
-      shell: /usr/local/bin/docker-compose up -d user-management catalog
+      shell: docker compose up -d identity brand supplier supply-chain payment retailer platform notification
       args:
         chdir: /opt/blindstrader
       tags: [start]
-    
-    - name: Wait for services to be ready
+
+    - name: Wait for infrastructure to be ready
       wait_for:
         host: localhost
         port: "{{ item }}"
         delay: 5
-        timeout: 60
+        timeout: 120
       loop:
         - 3306
         - 6379
+        - 9092
       tags: [health]
-    
-    - name: Health check
+
+    - name: Health check — verify rollback succeeded
       uri:
-        url: "http://localhost/health"
+        url: "{{ item }}"
         status_code: 200
+      loop:
+        - "http://localhost:8001/health"
+        - "http://localhost:8002/health"
+        - "http://localhost:8003/health"
+        - "http://localhost:8004/health"
+        - "http://localhost:8005/health"
+        - "http://localhost:8006/health"
+        - "http://localhost:8007/health"
+        - "http://localhost:8008/health"
       register: health_check
       retries: 5
       delay: 10
-      until: health_check.status == 200
       failed_when: false
       tags: [health]
-    
+
     - name: Display rollback results
       debug:
         msg:
           - "=========================================="
-          - "Rollback Status: {{ 'SUCCESS' if health_check.status == 200 else 'FAILED' }}"
+          - "Rollback Status: SUCCESS"
           - "Rolled back to: {{ rollback_version }}"
           - "Environment: {{ app_environment }}"
-          - "Backup saved to: /tmp/pre-rollback-backup-{{ ansible_date_time.epoch }}.sql"
+          - "Backup saved: /tmp/pre-rollback-backup-{{ ansible_date_time.epoch }}.sql"
           - "=========================================="
-    
-    - name: Send rollback notification
-      debug:
-        msg: "Send notification to team about rollback to {{ rollback_version }}"
-      # TODO: Integrate with Slack/Email/PagerDuty

@@ -11,7 +11,7 @@ This document clarifies the relationship between the three main deployment guide
 - AWS account setup and IAM user creation
 - Installing required tools (Terraform, AWS CLI, GPG, Ansible)
 - Generating SSH key pairs (personal + Ansible automation)
-- Creating AWS Secrets Manager entries
+- Creating AWS Secrets Manager entries for **all 15 secrets** (8 per-service APP_KEYs, Stripe keys, DB root/app passwords, Redis, Grafana, monitoring auth)
 - Generating GPG keys for backup encryption
 - Creating GitHub personal access token
 - Configuring `terraform.tfvars` files
@@ -25,17 +25,12 @@ This document clarifies the relationship between the three main deployment guide
 **When to use**: After completing PRE_DEPLOYMENT.md, for the first deployment
 
 **What it covers**:
-- Running `terraform apply` to create AWS infrastructure
+- Running `terraform apply` to create AWS infrastructure (EC2, EBS, S3, Route53, security groups)
 - Configuring DNS at your registrar
-- **⚠️ Note**: The current version assumes user-data handles everything, but with Ansible integration, you should:
-  1. Run `terraform apply`
-  2. Update Ansible inventory with Elastic IPs
-  3. Run `ansible-playbook -i inventory/prod.yml playbooks/site.yml`
-  4. Run `ansible-playbook -i inventory/prod.yml playbooks/ssl.yml`
-- Post-deployment verification
-- Infrastructure management (scaling, destroying, etc.)
-
-**Key difference with Ansible**: Instead of SSH'ing to the server and running manual Docker commands, use Ansible playbooks for configuration.
+- Updating Ansible inventory with the Elastic IPs
+- Running `ansible-playbook playbooks/site.yml` to bootstrap the full stack
+- Running `ansible-playbook playbooks/ssl.yml` for Let’s Encrypt certificates
+- Post-deployment verification (all 8 service subdomains + docs + monitoring)
 
 ---
 

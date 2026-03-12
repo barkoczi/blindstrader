@@ -1,8 +1,19 @@
 ---
-# Application role - Deploy and manage application services
+# Application role — Deploy and manage application services
 
 - name: Retrieve secrets from AWS Secrets Manager
   block:
+    - name: Get database root password
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/db_root_password \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: db_root_password_secret
+      no_log: true
+      changed_when: false
+
     - name: Get database password
       shell: |
         aws secretsmanager get-secret-value \
@@ -26,17 +37,6 @@
       changed_when: false
       failed_when: false
 
-    - name: Get Laravel APP_KEY
-      shell: |
-        aws secretsmanager get-secret-value \
-          --secret-id /blindstrader/{{ app_environment }}/app_key \
-          --region eu-west-2 \
-          --query SecretString \
-          --output text
-      register: app_key_secret
-      no_log: true
-      changed_when: false
-
     - name: Get Grafana admin password
       shell: |
         aws secretsmanager get-secret-value \
@@ -47,9 +47,135 @@
       register: grafana_password_secret
       no_log: true
       changed_when: false
+
+    - name: Get Stripe secret key
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/stripe_secret_key \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: stripe_secret_key_secret
+      no_log: true
+      changed_when: false
+      failed_when: false
+
+    - name: Get Stripe webhook secret
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/stripe_webhook_secret \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: stripe_webhook_secret_secret
+      no_log: true
+      changed_when: false
+      failed_when: false
+
+    - name: Get Stripe Connect client ID
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/stripe_connect_client_id \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: stripe_connect_client_id_secret
+      no_log: true
+      changed_when: false
+      failed_when: false
+
+    # Per-service Laravel APP_KEYs
+    - name: Get app key identity
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/app_key_identity \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: app_key_identity_secret
+      no_log: true
+      changed_when: false
+
+    - name: Get app key brand
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/app_key_brand \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: app_key_brand_secret
+      no_log: true
+      changed_when: false
+
+    - name: Get app key supplier
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/app_key_supplier \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: app_key_supplier_secret
+      no_log: true
+      changed_when: false
+
+    - name: Get app key supply chain
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/app_key_supply_chain \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: app_key_supply_chain_secret
+      no_log: true
+      changed_when: false
+
+    - name: Get app key payment
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/app_key_payment \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: app_key_payment_secret
+      no_log: true
+      changed_when: false
+
+    - name: Get app key retailer
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/app_key_retailer \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: app_key_retailer_secret
+      no_log: true
+      changed_when: false
+
+    - name: Get app key platform
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/app_key_platform \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: app_key_platform_secret
+      no_log: true
+      changed_when: false
+
+    - name: Get app key notification
+      shell: |
+        aws secretsmanager get-secret-value \
+          --secret-id /blindstrader/{{ app_environment }}/app_key_notification \
+          --region eu-west-2 \
+          --query SecretString \
+          --output text
+      register: app_key_notification_secret
+      no_log: true
+      changed_when: false
+
   tags: [app, secrets]
 
-- name: Create environment file
+- name: Create shared environment file
   template:
     src: .env.j2
     dest: /opt/blindstrader/.env
@@ -75,13 +201,13 @@
   tags: [app, deploy]
 
 - name: Pull latest Docker images
-  shell: /usr/local/bin/docker-compose pull
+  shell: docker compose pull
   args:
     chdir: /opt/blindstrader
   tags: [app, deploy]
 
-- name: Start Docker Compose services
-  shell: /usr/local/bin/docker-compose up -d
+- name: Start all services
+  shell: docker compose up -d
   args:
     chdir: /opt/blindstrader
   tags: [app, deploy]
@@ -91,7 +217,7 @@
     host: localhost
     port: 3306
     delay: 5
-    timeout: 60
+    timeout: 120
   tags: [app, deploy]
 
 - name: Wait for Redis to be ready
@@ -102,31 +228,93 @@
     timeout: 60
   tags: [app, deploy]
 
-- name: Run database migrations for user-management
+- name: Wait for Kafka to be ready
+  wait_for:
+    host: localhost
+    port: 9092
+    delay: 10
+    timeout: 120
+  tags: [app, deploy]
+
+- name: Run migrations — identity
   community.docker.docker_container_exec:
-    container: user-management
+    container: blindstrader-identity
     command: php artisan migrate --force
-  register: user_mgmt_migration
+  register: migration_identity
   failed_when: false
   tags: [app, deploy, migrations]
 
-- name: Run database migrations for catalog
+- name: Run migrations — brand
   community.docker.docker_container_exec:
-    container: catalog
+    container: blindstrader-brand
     command: php artisan migrate --force
-  register: catalog_migration
+  register: migration_brand
+  failed_when: false
+  tags: [app, deploy, migrations]
+
+- name: Run migrations — supplier
+  community.docker.docker_container_exec:
+    container: blindstrader-supplier
+    command: php artisan migrate --force
+  register: migration_supplier
+  failed_when: false
+  tags: [app, deploy, migrations]
+
+- name: Run migrations — supply-chain
+  community.docker.docker_container_exec:
+    container: blindstrader-supply-chain
+    command: php artisan migrate --force
+  register: migration_supply_chain
+  failed_when: false
+  tags: [app, deploy, migrations]
+
+- name: Run migrations — payment
+  community.docker.docker_container_exec:
+    container: blindstrader-payment
+    command: php artisan migrate --force
+  register: migration_payment
+  failed_when: false
+  tags: [app, deploy, migrations]
+
+- name: Run migrations — retailer
+  community.docker.docker_container_exec:
+    container: blindstrader-retailer
+    command: php artisan migrate --force
+  register: migration_retailer
+  failed_when: false
+  tags: [app, deploy, migrations]
+
+- name: Run migrations — platform
+  community.docker.docker_container_exec:
+    container: blindstrader-platform
+    command: php artisan migrate --force
+  register: migration_platform
+  failed_when: false
+  tags: [app, deploy, migrations]
+
+- name: Run migrations — notification
+  community.docker.docker_container_exec:
+    container: blindstrader-notification
+    command: php artisan migrate --force
+  register: migration_notification
   failed_when: false
   tags: [app, deploy, migrations]
 
 - name: Display migration results
   debug:
-    msg: 
-      - "User Management Migrations: {{ user_mgmt_migration.stdout | default('N/A') }}"
-      - "Catalog Migrations: {{ catalog_migration.stdout | default('N/A') }}"
+    msg:
+          - "identity: {{ migration_identity.stdout | default("N/A") }}"
+          - "brand: {{ migration_brand.stdout | default("N/A") }}"
+          - "supplier: {{ migration_supplier.stdout | default("N/A") }}"
+          - "supply-chain: {{ migration_supply_chain.stdout | default("N/A") }}"
+          - "payment: {{ migration_payment.stdout | default("N/A") }}"
+          - "retailer: {{ migration_retailer.stdout | default("N/A") }}"
+          - "platform: {{ migration_platform.stdout | default("N/A") }}"
+          - "notification: {{ migration_notification.stdout | default("N/A") }}"
   tags: [app, deploy, migrations]
 
 - name: Verify all services are running
-  shell: /usr/local/bin/docker-compose ps
+  shell: docker compose ps
   args:
     chdir: /opt/blindstrader
   register: service_status
@@ -134,5 +322,5 @@
 
 - name: Display service status
   debug:
-    var: service_status
+    var: service_status.stdout_lines
   tags: [app, health]

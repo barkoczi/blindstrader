@@ -77,7 +77,7 @@ Located in [terraform/modules/](../terraform/modules/):
 
 ## Key Features
 
-✅ **Cost-Optimized**: ~$50-66/month for both environments
+✅ **Cost-Optimized**: ~$80-105/month for both environments (8 services + Kafka)
 ✅ **Automated Backups**: Daily encrypted backups to S3 (production)
 ✅ **Auto-Shutdown**: Configurable scheduling for staging (50-70% savings)
 ✅ **SSL/TLS**: Automated Let's Encrypt certificates via Certbot
@@ -97,35 +97,50 @@ Elastic IP → EC2 Instance (eu-west-2a)
     ↓
 nginx (reverse proxy + SSL termination)
     ↓
-┌─────────────────────────────────────┐
-│  Docker Containers                  │
-│  - catalog (Laravel)                │
-│  - user-management (Laravel)        │
-│  - mysql (persistent EBS)           │
-│  - redis (persistent EBS)           │
-│  - prometheus/grafana/loki          │
-│  - certbot (SSL automation)         │
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  Application Containers (Laravel 12 / PHP 8.3-fpm)  │
+│  - blindstrader-identity    (port 8001)              │
+│  - blindstrader-brand       (port 8002)              │
+│  - blindstrader-supplier    (port 8003)              │
+│  - blindstrader-supply-chain(port 8004)              │
+│  - blindstrader-payment     (port 8005)              │
+│  - blindstrader-retailer    (port 8006)              │
+│  - blindstrader-platform    (port 8007)              │
+│  - blindstrader-notification(port 8008)              │
+│  - blindstrader-docs        (Scalar, port 8009)      │
+├─────────────────────────────────────────────────────┤
+│  Infrastructure Containers                           │
+│  - blindstrader-mysql  (EBS: /var/lib/mysql)         │
+│  - blindstrader-redis  (EBS: /var/lib/redis)         │
+│  - blindstrader-kafka  (KRaft, EBS: /var/lib/kafka)  │
+│  - certbot (SSL automation)                          │
+├─────────────────────────────────────────────────────┤
+│  Monitoring Containers                               │
+│  - prometheus / grafana / loki / promtail            │
+│  - alertmanager (EBS: /var/lib/monitoring)           │
+└─────────────────────────────────────────────────────┘
     ↓
 S3 (encrypted backups) + EBS Snapshots
 ```
 
 ## Cost Breakdown
 
-### Production (~$40-45/month)
-- EC2 t3a.medium: $25/mo
-- EBS volumes (45GB): $4/mo
+### Production (~$65-80/month)
+- EC2 t3a.large (8 services + Kafka needs ≥4 GB RAM): $50/mo
+- EBS volumes (4 × 20 GB — mysql/redis/kafka/monitoring): $8/mo
 - S3 backups: $1-2/mo
 - AWS Backup: $2-3/mo
 - Route53: $0.50/mo
 - Data transfer: $1-5/mo
 
-### Staging (~$10-21/month)
-- EC2 t3a.small: $17/mo (or $8-10 with auto-shutdown)
-- EBS volumes (45GB): $4/mo
+> **Note**: `t3a.medium` (4 GB) may be sufficient initially, but running 8 PHP-FPM workers + Kafka on the same host benefits from `t3a.large` (8 GB). Monitor memory with `docker stats` and downsize if comfortable.
+
+### Staging (~$15-25/month)
+- EC2 t3a.medium: $25/mo (or $12-15 with auto-shutdown)
+- EBS volumes (4 × 10 GB): $4/mo
 - No backups or snapshots
 
-**Total: ~$50-66/month**
+**Total: ~$80-105/month** (both environments)
 
 ## Next Steps
 
@@ -229,9 +244,20 @@ All environments support customization via `terraform.tfvars`:
 
 All sensitive values stored in AWS Secrets Manager:
 - `/blindstrader/shared/gpg_public_key`: Shared GPG public key for backups
-- `/blindstrader/{env}/db_password`: MySQL root password
+- `/blindstrader/{env}/db_root_password`: MySQL **root** password
+- `/blindstrader/{env}/db_password`: MySQL app user password
 - `/blindstrader/{env}/redis_password`: Redis password (optional)
-- `/blindstrader/{env}/app_key`: Laravel APP_KEY
+- `/blindstrader/{env}/app_key_identity`: Laravel APP_KEY — Identity service
+- `/blindstrader/{env}/app_key_brand`: Laravel APP_KEY — Brand service
+- `/blindstrader/{env}/app_key_supplier`: Laravel APP_KEY — Supplier service
+- `/blindstrader/{env}/app_key_supply_chain`: Laravel APP_KEY — Supply Chain service
+- `/blindstrader/{env}/app_key_payment`: Laravel APP_KEY — Payment service
+- `/blindstrader/{env}/app_key_retailer`: Laravel APP_KEY — Retailer service
+- `/blindstrader/{env}/app_key_platform`: Laravel APP_KEY — Platform service
+- `/blindstrader/{env}/app_key_notification`: Laravel APP_KEY — Notification service
+- `/blindstrader/{env}/stripe_secret_key`: Stripe secret key (Payment service)
+- `/blindstrader/{env}/stripe_webhook_secret`: Stripe webhook signing secret
+- `/blindstrader/{env}/stripe_connect_client_id`: Stripe Connect client ID
 - `/blindstrader/{env}/grafana_admin_password`: Grafana admin password
 - `/blindstrader/{env}/basic_auth_password`: Monitoring basic auth password
 

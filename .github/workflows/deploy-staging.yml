@@ -11,33 +11,33 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: staging
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
       - name: Install Ansible
         run: |
           pip install ansible
           ansible-galaxy collection install community.docker
-      
+
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}" > ~/.ssh/blindstrader-ansible-key
           chmod 600 ~/.ssh/blindstrader-ansible-key
           ssh-keyscan -H ${{ secrets.STAGE_HOST_IP }} >> ~/.ssh/known_hosts
-      
+
       - name: Update inventory with staging IP
         run: |
           cd ansible
           sed -i "s/ansible_host:.*/ansible_host: ${{ secrets.STAGE_HOST_IP }}/" inventory/stage.yml
-      
+
       - name: Wake up staging instance (if auto-shutdown enabled)
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -48,14 +48,14 @@ jobs:
             --filters "Name=tag:Environment,Values=stage" "Name=instance-state-name,Values=running,stopped" \
             --query "Reservations[0].Instances[0].InstanceId" \
             --output text)
-          
+
           if [ "$INSTANCE_ID" != "None" ]; then
             echo "Starting instance $INSTANCE_ID..."
             aws ec2 start-instances --instance-ids $INSTANCE_ID
             aws ec2 wait instance-running --instance-ids $INSTANCE_ID
             echo "Instance started successfully"
           fi
-      
+
       - name: Run Ansible deployment
         env:
           ANSIBLE_HOST_KEY_CHECKING: False
@@ -65,14 +65,20 @@ jobs:
             -e "version=latest" \
             -e "github_token=${{ secrets.GH_PAT }}" \
             -v
-      
+
       - name: Verify deployment
         run: |
           echo "Waiting for services to be healthy..."
           sleep 30
-          curl -f https://auth.stage.blindstrader.com/health || exit 1
-          curl -f https://catalog.stage.blindstrader.com/health || exit 1
-      
+          curl -f --retry 5 --retry-delay 10 https://identity.stage.blindstrader.com/health || exit 1
+          curl -f --retry 5 --retry-delay 10 https://brand.stage.blindstrader.com/health || exit 1
+          curl -f --retry 5 --retry-delay 10 https://supplier.stage.blindstrader.com/health || exit 1
+          curl -f --retry 5 --retry-delay 10 https://sc.stage.blindstrader.com/health || exit 1
+          curl -f --retry 5 --retry-delay 10 https://payment.stage.blindstrader.com/health || exit 1
+          curl -f --retry 5 --retry-delay 10 https://retailer.stage.blindstrader.com/health || exit 1
+          curl -f --retry 5 --retry-delay 10 https://platform.stage.blindstrader.com/health || exit 1
+          curl -f --retry 5 --retry-delay 10 https://notification.stage.blindstrader.com/health || exit 1
+
       - name: Notify deployment success
         if: success()
         run: |

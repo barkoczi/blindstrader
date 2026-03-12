@@ -69,10 +69,11 @@ The staging environment creates a separate hosted zone for `stage.blindstrader.c
 ### 5. Verify DNS Propagation
 
 ```bash
-# Check if DNS is resolving
-dig auth.blindstrader.com
+# Check if DNS is resolving (repeat for each subdomain)
+dig identity.blindstrader.com
+dig brand.blindstrader.com
 # or for staging
-dig auth.stage.blindstrader.com
+dig identity.stage.blindstrader.com
 
 # Should show the Elastic IP address
 ```
@@ -137,21 +138,33 @@ The Ansible deployment takes approximately 10-15 minutes.
 Test each subdomain:
 
 ```bash
-# From your local machine
-curl -I https://auth.blindstrader.com
-curl -I https://catalog.blindstrader.com
+# From your local machine — test every service health endpoint
+for svc in identity brand supplier sc payment retailer platform notification; do
+  echo -n "${svc}: "
+  curl -sf -o /dev/null -w "%{http_code}" https://${svc}.blindstrader.com/api/health
+  echo
+done
 
-# Test monitoring endpoints (will prompt for basic auth)
+# API docs portal
+curl -I https://docs.blindstrader.com
+
+# Monitoring endpoints (basic auth required)
 curl -u admin:YOUR_MONITORING_PASSWORD https://insights.blindstrader.com
 curl -u admin:YOUR_MONITORING_PASSWORD https://prometheus.blindstrader.com
 ```
 
 Or visit in your browser:
-- https://blindstrader.com (redirects to auth)
-- https://auth.blindstrader.com
-- https://catalog.blindstrader.com
-- https://insights.blindstrader.com (requires basic auth)
-- https://prometheus.blindstrader.com (requires basic auth)
+- https://identity.blindstrader.com  (Identity / SSO)
+- https://brand.blindstrader.com     (Brand service)
+- https://supplier.blindstrader.com  (Supplier service)
+- https://sc.blindstrader.com        (Supply Chain)
+- https://payment.blindstrader.com   (Payment service)
+- https://retailer.blindstrader.com  (Retailer storefronts)
+- https://platform.blindstrader.com  (Platform Ops / Filament admin)
+- https://notification.blindstrader.com (Notification service)
+- https://docs.blindstrader.com      (Scalar API reference portal)
+- https://insights.blindstrader.com  (Grafana — requires basic auth)
+- https://prometheus.blindstrader.com (Prometheus — requires basic auth)
 
 ### 10. Test Backup System (Production Only)
 
@@ -199,7 +212,7 @@ aws ec2 start-instances --instance-ids <INSTANCE_ID> --region eu-west-2
 ## Post-Deployment Verification Checklist
 
 - [ ] All Docker containers are running (`docker-compose ps`)
-- [ ] DNS resolves to correct IP (`dig auth.blindstrader.com`)
+- [ ] DNS resolves to correct IP for all services (`dig identity.blindstrader.com`)
 - [ ] SSL certificates are installed and valid
 - [ ] Application is accessible via HTTPS
 - [ ] Monitoring endpoints require basic authentication
@@ -315,8 +328,9 @@ docker-compose up -d
 # All services
 docker-compose logs -f
 
-# Specific service
-docker-compose logs -f catalog
+# Specific service (use the container name, e.g. blindstrader-identity)
+docker-compose logs -f blindstrader-identity
+docker-compose logs -f blindstrader-brand
 docker-compose logs -f nginx
 
 # Nginx access logs
@@ -352,7 +366,10 @@ When rotating passwords:
 
 3. Restart affected services:
    ```bash
-   docker-compose restart catalog user-management
+   docker-compose restart \
+     blindstrader-identity blindstrader-brand blindstrader-supplier \
+     blindstrader-supply-chain blindstrader-payment blindstrader-retailer \
+     blindstrader-platform blindstrader-notification
    ```
 
 ### Check Resource Usage

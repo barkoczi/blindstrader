@@ -457,16 +457,17 @@ ls -la /var/lib/mysql /var/lib/redis /var/lib/monitoring
 
 **Solutions**:
 ```bash
-# 1. Verify DNS is propagated
-dig auth.blindstrader.com
-nslookup catalog.blindstrader.com
+# 1. Verify DNS is propagated for key subdomains
+dig identity.blindstrader.com
+dig brand.blindstrader.com
+dig docs.blindstrader.com
 
 # 2. Check nginx is stopped (first time only)
 ssh -i ~/.ssh/blindstrader-ansible-key ansible@<ELASTIC_IP>
 docker ps | grep nginx
 
 # 3. Verify port 80 is accessible
-curl -I http://auth.blindstrader.com/.well-known/acme-challenge/test
+curl -I http://identity.blindstrader.com/.well-known/acme-challenge/test
 
 # 4. Check certbot logs
 docker logs certbot
@@ -482,19 +483,28 @@ docker logs certbot
 ssh -i ~/.ssh/blindstrader-ansible-key ansible@<ELASTIC_IP>
 docker ps -a
 
-# 2. Check container logs
-docker logs user-management --tail=50
-docker logs catalog --tail=50
-docker logs mysql --tail=50
+# 2. Check container logs (replace <service> with identity/brand/supplier/etc.)
+docker logs blindstrader-identity --tail=50
+docker logs blindstrader-brand --tail=50
+docker logs blindstrader-mysql --tail=50
 
-# 3. Test endpoints manually
-curl http://localhost/health
-curl http://localhost:3306  # MySQL
-curl http://localhost:6379  # Redis
+# Or check all 8 app containers at once:
+for svc in identity brand supplier supply-chain payment retailer platform notification; do
+  echo "=== $svc ==="
+  docker logs blindstrader-$svc --tail=20 2>&1 | tail -5
+done
+
+# 3. Test health endpoints manually
+for port in 8001 8002 8003 8004 8005 8006 8007 8008; do
+  echo -n "Port $port: "
+  curl -sf http://localhost:$port/api/health || echo "FAIL"
+done
 
 # 4. Check migrations ran successfully
-docker exec user-management php artisan migrate:status
-docker exec catalog php artisan migrate:status
+for svc in identity brand supplier supply-chain payment retailer platform notification; do
+  echo "=== $svc ==="
+  docker exec blindstrader-$svc php artisan migrate:status 2>&1 | tail -5
+done
 ```
 
 ## Best Practices

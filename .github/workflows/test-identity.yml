@@ -1,0 +1,88 @@
+name: Test Identity Service
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'services/identity/**'
+      - '.github/workflows/test-identity.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'services/identity/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: testing
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, dom, filter, gd, json, pdo, redis, rdkafka
+          coverage: xdebug
+
+      - name: Copy .env
+        run: |
+          cd services/identity
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Install Composer dependencies
+        run: |
+          cd services/identity
+          composer install --prefer-dist --no-progress --ignore-platform-req=ext-rdkafka
+
+      - name: Run tests
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: testing
+          DB_USERNAME: root
+          DB_PASSWORD: password
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+        run: |
+          cd services/identity
+          php artisan migrate --force
+          php artisan test --coverage-clover coverage.xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./services/identity/coverage.xml
+          flags: identity
+          token: ${{ secrets.CODECOV_TOKEN }}

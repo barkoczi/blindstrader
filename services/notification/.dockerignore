@@ -1,0 +1,26 @@
+# --- Build artefacts (rebuilt inside Docker) ---
+vendor/
+node_modules/
+
+# --- Laravel bootstrap cache (may reference dev-only providers) ---
+bootstrap/cache/*.php
+
+# --- Local environment & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Dev/test only ---
+.phpunit.result.cache
+coverage/
+.php-cs-fixer.cache
+
+# --- Git ---
+.git
+.gitignore
+.gitattributes
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.DS_Store

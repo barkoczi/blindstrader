@@ -287,58 +287,86 @@ aws secretsmanager create-secret \
 ### Production Secrets
 
 ```bash
-# Database password
-aws secretsmanager create-secret \
-    --name /blindstrader/prod/db_password \
-    --description "MySQL root password for production" \
-    --secret-string "YOUR_STRONG_DB_PASSWORD_HERE" \
-    --region eu-west-2
+ENV=prod
+REGION=eu-west-2
 
-# Redis password (optional, leave empty for no auth)
+# ── Database ────────────────────────────────────────────────────────────────
 aws secretsmanager create-secret \
-    --name /blindstrader/prod/redis_password \
-    --description "Redis password for production" \
-    --secret-string "" \
-    --region eu-west-2
+    --name /blindstrader/$ENV/db_root_password \
+    --description "MySQL root password" \
+    --secret-string "YOUR_STRONG_ROOT_PASSWORD" --region $REGION
 
-# Laravel APP_KEY (generate with: php artisan key:generate --show)
 aws secretsmanager create-secret \
-    --name /blindstrader/prod/app_key \
-    --description "Laravel APP_KEY for production" \
-    --secret-string "base64:YOUR_GENERATED_KEY_HERE" \
-    --region eu-west-2
+    --name /blindstrader/$ENV/db_password \
+    --description "MySQL app user (blindstrader) password" \
+    --secret-string "YOUR_STRONG_DB_PASSWORD" --region $REGION
 
-# Grafana admin password
+# ── Redis (optional password) ────────────────────────────────────────────────
 aws secretsmanager create-secret \
-    --name /blindstrader/prod/grafana_admin_password \
-    --description "Grafana admin password for production" \
-    --secret-string "YOUR_STRONG_GRAFANA_PASSWORD" \
-    --region eu-west-2
+    --name /blindstrader/$ENV/redis_password \
+    --description "Redis password (leave empty to disable auth)" \
+    --secret-string "" --region $REGION
 
-# Basic auth password for monitoring endpoints
+# ── Per-service Laravel APP_KEYs ─────────────────────────────────────────────
+# Generate each with: cd services/<name> && php artisan key:generate --show
+for svc in identity brand supplier supply-chain payment retailer platform notification; do
+  KEY_NAME="app_key_${svc//-/_}"
+  aws secretsmanager create-secret \
+    --name /blindstrader/$ENV/$KEY_NAME \
+    --description "Laravel APP_KEY for $svc" \
+    --secret-string "base64:REPLACE_WITH_GENERATED_KEY" --region $REGION
+done
+
+# ── Stripe (Payment service) ──────────────────────────────────────────────────
 aws secretsmanager create-secret \
-    --name /blindstrader/prod/basic_auth_password \
-    --description "Basic auth password for monitoring access" \
-    --secret-string "YOUR_MONITORING_PASSWORD" \
-    --region eu-west-2
+    --name /blindstrader/$ENV/stripe_secret_key \
+    --description "Stripe secret key" \
+    --secret-string "sk_live_YOUR_KEY" --region $REGION
+
+aws secretsmanager create-secret \
+    --name /blindstrader/$ENV/stripe_webhook_secret \
+    --description "Stripe webhook signing secret" \
+    --secret-string "whsec_YOUR_SECRET" --region $REGION
+
+aws secretsmanager create-secret \
+    --name /blindstrader/$ENV/stripe_connect_client_id \
+    --description "Stripe Connect client ID" \
+    --secret-string "ca_YOUR_CLIENT_ID" --region $REGION
+
+# ── Monitoring ───────────────────────────────────────────────────────────────
+aws secretsmanager create-secret \
+    --name /blindstrader/$ENV/grafana_admin_password \
+    --description "Grafana admin password" \
+    --secret-string "YOUR_STRONG_GRAFANA_PASSWORD" --region $REGION
+
+aws secretsmanager create-secret \
+    --name /blindstrader/$ENV/basic_auth_password \
+    --description "Basic auth password for monitoring endpoints" \
+    --secret-string "YOUR_MONITORING_PASSWORD" --region $REGION
 ```
 
 ### Staging Secrets
 
-Repeat the above commands, replacing `/prod/` with `/stage/` and using different passwords.
+Repeat the commands above with `ENV=stage` and use separate (different) passwords from production.
 
-## 5. Generate Laravel APP_KEY
+## 5. Generate Laravel APP_KEYs (one per service)
 
-If you have a Laravel installation locally:
+Each of the 8 services needs its own `APP_KEY` stored as a separate Secrets Manager entry.
 
 ```bash
-cd services/catalog  # or user-management
-php artisan key:generate --show
+# Run once per service — each produces a unique base64:... key
+for svc in identity brand supplier supply-chain payment retailer platform notification; do
+  echo -n "${svc}: "
+  cd services/$svc && php artisan key:generate --show && cd -
+done
 ```
 
-This will output something like: `base64:abcd1234...`
+Alternatively, generate each key manually:
+```bash
+cd services/identity && php artisan key:generate --show
+```
 
-Use this value for the `/blindstrader/{env}/app_key` secret.
+Store each output as `/blindstrader/{env}/app_key_{service}` (e.g. `app_key_identity`, `app_key_supply_chain`).
 
 ## 6. Configure GitHub Credentials (For CI/CD)
 
@@ -578,9 +606,12 @@ Before running `terraform apply`, ensure:
 - [ ] CNAME records are configured (if using third-party services)
 - [ ] Terraform is initialized (`terraform init` completed)
 - [ ] You've reviewed `terraform plan` output
-- [ ] You understand the monthly costs (~$50-66)
+- [ ] You understand the monthly costs (~$60-80 with Kafka)
 - [ ] You have access to your domain registrar for NS record changes
 - [ ] You have Sentry DSN (optional, for error tracking)
+- [ ] All 8 per-service `app_key_*` secrets are created in Secrets Manager
+- [ ] Stripe secrets are created (`stripe_secret_key`, `stripe_webhook_secret`, `stripe_connect_client_id`)
+- [ ] `db_root_password` secret is created (separate from `db_password`)
 
 **Note**: GitHub Actions secrets (STAGING_HOST, PRODUCTION_HOST, etc.) will be configured **after** the first deployment when you have the Elastic IPs. See [GITHUB_ACTIONS.md](GITHUB_ACTIONS.md) for post-deployment setup.
 

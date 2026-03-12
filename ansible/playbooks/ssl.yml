@@ -6,105 +6,80 @@
   hosts: all
   become: yes
   gather_facts: no
-  
+
   vars:
     certbot_email: "admin@{{ domain }}"
     certbot_domains:
-      - "auth.{{ domain }}"
-      - "catalog.{{ domain }}"
+      - "identity.{{ domain }}"
+      - "brand.{{ domain }}"
+      - "supplier.{{ domain }}"
+      - "sc.{{ domain }}"
+      - "payment.{{ domain }}"
+      - "retailer.{{ domain }}"
+      - "platform.{{ domain }}"
+      - "notification.{{ domain }}"
+      - "docs.{{ domain }}"
       - "insights.{{ domain }}"
-      - "prometheus.{{ domain }}"
-      - "pa.{{ domain }}"
-  
+      - "prometheus.{{ domain }}" 
+
   tasks:
-    - name: Check if certificates already exist
+    - name: Check if wildcard certificate exists
       stat:
         path: "/opt/blindstrader/nginx/certs/live/{{ domain }}/fullchain.pem"
       register: cert_exists
-    
+
     - name: Stop nginx for standalone certbot (first time only)
-      shell: /usr/local/bin/docker-compose stop nginx
+      shell: docker compose stop nginx
       args:
         chdir: /opt/blindstrader
       when: not cert_exists.stat.exists
       tags: [certbot]
-    
-    - name: Obtain SSL certificates (standalone mode - first time)
+
+    - name: Obtain SSL certificates — standalone mode (first time)
       command: >
-        docker run --rm -v /opt/blindstrader/nginx/certs:/etc/letsencrypt
+        docker run --rm
+        -v /opt/blindstrader/nginx/certs:/etc/letsencrypt
         -p 80:80 certbot/certbot certonly --standalone
         --email {{ certbot_email }}
         --agree-tos --no-eff-email --expand
         -d {{ certbot_domains | join(' -d ') }}
       when: not cert_exists.stat.exists
       tags: [certbot]
-    
+
     - name: Start nginx after obtaining certificates
-      shell: /usr/local/bin/docker-compose up -d nginx
+      shell: docker compose up -d nginx
       args:
         chdir: /opt/blindstrader
       when: not cert_exists.stat.exists
       tags: [nginx]
-    
-    - name: Renew existing certificates (webroot mode)
+
+    - name: Renew existing certificates — webroot mode
       command: >
-        docker run --rm 
+        docker run --rm
         -v /opt/blindstrader/nginx/certs:/etc/letsencrypt
         -v /opt/blindstrader/certbot-webroot:/var/www/certbot
         certbot/certbot renew --webroot --webroot-path=/var/www/certbot
       when: cert_exists.stat.exists
       register: renewal_result
       tags: [certbot, renew]
-    
+
     - name: Reload nginx after renewal
-      shell: /usr/local/bin/docker-compose restart nginx
+      shell: docker compose restart nginx
       args:
         chdir: /opt/blindstrader
-      when: 
+      when:
         - cert_exists.stat.exists
         - renewal_result is changed
       tags: [nginx]
-    
-    - name: Create systemd timer for auto-renewal
-      copy:
-        content: |
-          [Unit]
-          Description=Certbot Renewal Timer
-          
-          [Timer]
-          OnCalendar=daily
-          OnCalendar=02:00
-          Persistent=true
-          
-          [Install]
-          WantedBy=timers.target
-        dest: /etc/systemd/system/certbot-renewal.timer
-        mode: '0644'
-      tags: [systemd]
-    
-    - name: Create systemd service for auto-renewal
-      copy:
-        content: |
-          [Unit]
-          Description=Certbot Renewal Service
-          After=docker.service
-          
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/bin/docker run --rm -v /opt/blindstrader/nginx/certs:/etc/letsencrypt -v /opt/blindstrader/certbot-webroot:/var/www/certbot certbot/certbot renew --webroot --webroot-path=/var/www/certbot
-          ExecStartPost=/usr/local/bin/docker-compose -f /opt/blindstrader/docker-compose.yml restart nginx
-        dest: /etc/systemd/system/certbot-renewal.service
-        mode: '0644'
-      tags: [systemd]
-    
-    - name: Enable certbot renewal timer
+
+    - name: Enable auto-renewal systemd timer
       systemd:
         name: certbot-renewal.timer
         enabled: yes
         state: started
         daemon_reload: yes
       tags: [systemd]
-    
+
     - name: Display SSL status
       debug:
         msg:
@@ -116,5 +91,5 @@
           - "Certificates configured for:"
           - "{{ certbot_domains }}"
           - "=========================================="
-          - "Auto-renewal: ENABLED (daily at 02:00 UTC)"
+          - "Auto-renewal: ENABLED (daily via systemd timer)"
           - "=========================================="

@@ -1,97 +1,170 @@
 ---
 # Application Deployment Playbook
-# Usage: ansible-playbook -i inventory/prod.yml playbooks/deploy-app.yml
-# This playbook only deploys application changes without reconfiguring infrastructure
+# Usage: ansible-playbook -i inventory/prod.yml playbooks/deploy-app.yml -e "version=latest"
 
 - name: Deploy BlindStrader Application
   hosts: all
   become: yes
   gather_facts: no
-  
+
   vars:
     app_version: "{{ version | default('latest') }}"
-  
+
   pre_tasks:
     - name: Display deployment info
       debug:
         msg: "Deploying {{ app_version }} to {{ app_environment }}"
-  
+
   tasks:
     - name: Pull latest Docker images
-      shell: /usr/local/bin/docker-compose pull
+      shell: docker compose pull
       args:
         chdir: /opt/blindstrader
       tags: [pull]
-    
-    - name: Stop application containers (blue-green style)
-      shell: /usr/local/bin/docker-compose stop user-management catalog
+
+    - name: Stop application containers
+      shell: docker compose stop identity brand supplier supply-chain payment retailer platform notification
       args:
         chdir: /opt/blindstrader
       tags: [stop]
-    
+
     - name: Start application containers with new images
-      shell: /usr/local/bin/docker-compose up -d user-management catalog
+      shell: docker compose up -d identity brand supplier supply-chain payment retailer platform notification
       args:
         chdir: /opt/blindstrader
       tags: [start]
-    
-    - name: Wait for services to be healthy
+
+    - name: Wait for infrastructure to be healthy
       wait_for:
         host: localhost
         port: "{{ item }}"
         delay: 5
-        timeout: 60
+        timeout: 120
       loop:
         - 3306  # MySQL
         - 6379  # Redis
+        - 9092  # Kafka
       tags: [health]
-    
-    - name: Run database migrations - user-management
+
+    - name: Run migrations — identity
       community.docker.docker_container_exec:
-        container: user-management
+        container: blindstrader-identity
         command: php artisan migrate --force
-      register: user_mgmt_migration
+      register: migration_identity
       failed_when: false
       tags: [migrations]
-    
-    - name: Run database migrations - catalog
+
+    - name: Run migrations — brand
       community.docker.docker_container_exec:
-        container: catalog
+        container: blindstrader-brand
         command: php artisan migrate --force
-      register: catalog_migration
+      register: migration_brand
       failed_when: false
       tags: [migrations]
-    
-    - name: Clear application cache
+
+    - name: Run migrations — supplier
+      community.docker.docker_container_exec:
+        container: blindstrader-supplier
+        command: php artisan migrate --force
+      register: migration_supplier
+      failed_when: false
+      tags: [migrations]
+
+    - name: Run migrations — supply-chain
+      community.docker.docker_container_exec:
+        container: blindstrader-supply-chain
+        command: php artisan migrate --force
+      register: migration_supply_chain
+      failed_when: false
+      tags: [migrations]
+
+    - name: Run migrations — payment
+      community.docker.docker_container_exec:
+        container: blindstrader-payment
+        command: php artisan migrate --force
+      register: migration_payment
+      failed_when: false
+      tags: [migrations]
+
+    - name: Run migrations — retailer
+      community.docker.docker_container_exec:
+        container: blindstrader-retailer
+        command: php artisan migrate --force
+      register: migration_retailer
+      failed_when: false
+      tags: [migrations]
+
+    - name: Run migrations — platform
+      community.docker.docker_container_exec:
+        container: blindstrader-platform
+        command: php artisan migrate --force
+      register: migration_platform
+      failed_when: false
+      tags: [migrations]
+
+    - name: Run migrations — notification
+      community.docker.docker_container_exec:
+        container: blindstrader-notification
+        command: php artisan migrate --force
+      register: migration_notification
+      failed_when: false
+      tags: [migrations]
+
+    - name: Cache config and routes for all services
       community.docker.docker_container_exec:
         container: "{{ item.container }}"
         command: "{{ item.command }}"
       loop:
-        - { container: 'user-management', command: 'php artisan cache:clear' }
-        - { container: 'user-management', command: 'php artisan config:clear' }
-        - { container: 'user-management', command: 'php artisan route:clear' }
-        - { container: 'user-management', command: 'php artisan view:clear' }
-        - { container: 'catalog', command: 'php artisan cache:clear' }
-        - { container: 'catalog', command: 'php artisan config:clear' }
-        - { container: 'catalog', command: 'php artisan route:clear' }
-        - { container: 'catalog', command: 'php artisan view:clear' }
+        - { container: 'blindstrader-identity', command: 'php artisan cache:clear' }
+        - { container: 'blindstrader-identity', command: 'php artisan config:cache' }
+        - { container: 'blindstrader-identity', command: 'php artisan route:cache' }
+        - { container: 'blindstrader-brand', command: 'php artisan cache:clear' }
+        - { container: 'blindstrader-brand', command: 'php artisan config:cache' }
+        - { container: 'blindstrader-brand', command: 'php artisan route:cache' }
+        - { container: 'blindstrader-supplier', command: 'php artisan cache:clear' }
+        - { container: 'blindstrader-supplier', command: 'php artisan config:cache' }
+        - { container: 'blindstrader-supplier', command: 'php artisan route:cache' }
+        - { container: 'blindstrader-supply-chain', command: 'php artisan cache:clear' }
+        - { container: 'blindstrader-supply-chain', command: 'php artisan config:cache' }
+        - { container: 'blindstrader-supply-chain', command: 'php artisan route:cache' }
+        - { container: 'blindstrader-payment', command: 'php artisan cache:clear' }
+        - { container: 'blindstrader-payment', command: 'php artisan config:cache' }
+        - { container: 'blindstrader-payment', command: 'php artisan route:cache' }
+        - { container: 'blindstrader-retailer', command: 'php artisan cache:clear' }
+        - { container: 'blindstrader-retailer', command: 'php artisan config:cache' }
+        - { container: 'blindstrader-retailer', command: 'php artisan route:cache' }
+        - { container: 'blindstrader-platform', command: 'php artisan cache:clear' }
+        - { container: 'blindstrader-platform', command: 'php artisan config:cache' }
+        - { container: 'blindstrader-platform', command: 'php artisan route:cache' }
+        - { container: 'blindstrader-notification', command: 'php artisan cache:clear' }
+        - { container: 'blindstrader-notification', command: 'php artisan config:cache' }
+        - { container: 'blindstrader-notification', command: 'php artisan route:cache' }
       failed_when: false
       tags: [cache]
-    
+
     - name: Reload nginx
-      shell: /usr/local/bin/docker-compose restart nginx
+      shell: docker compose restart nginx
       args:
         chdir: /opt/blindstrader
       tags: [nginx]
-    
-    - name: Health check - Test application endpoints
+
+    - name: Health check — all service endpoints
       uri:
-        url: "http://localhost/health"
+        url: "{{ item }}"
         status_code: 200
-      register: health_check
+      loop:
+        - "http://localhost:8001/health"
+        - "http://localhost:8002/health"
+        - "http://localhost:8003/health"
+        - "http://localhost:8004/health"
+        - "http://localhost:8005/health"
+        - "http://localhost:8006/health"
+        - "http://localhost:8007/health"
+        - "http://localhost:8008/health"
+      register: health_results
       failed_when: false
       tags: [health]
-    
+
     - name: Display deployment results
       debug:
         msg:
@@ -99,8 +172,4 @@
           - "Deployment Status: SUCCESS"
           - "Version: {{ app_version }}"
           - "Environment: {{ app_environment }}"
-          - "=========================================="
-          - "Migration Results:"
-          - "  User Management: {{ user_mgmt_migration.stdout | default('N/A') }}"
-          - "  Catalog: {{ catalog_migration.stdout | default('N/A') }}"
           - "=========================================="

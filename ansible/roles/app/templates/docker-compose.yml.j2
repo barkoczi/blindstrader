@@ -1,203 +1,572 @@
-version: '3.8'
-
 services:
-  # MySQL Database
-  mysql:
+  # ─── Infrastructure ──────────────────────────────────────────────────────────
+
+  db:
     image: mysql:8.0
-    container_name: mysql
+    container_name: blindstrader-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-      MYSQL_DATABASE: blindstrader
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: blindstrader_identity
     volumes:
       - /var/lib/mysql:/var/lib/mysql
-    ports:
-      - "3306:3306"
+      - /opt/blindstrader/docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - blindstrader
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 20s
+      retries: 10
 
-  # Redis Cache
   redis:
     image: redis:7-alpine
-    container_name: redis
+    container_name: blindstrader-redis
     restart: unless-stopped
 {% if redis_password_secret.stdout %}
-    command: 
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --requirepass
-      - ${REDIS_PASSWORD}
+    command: redis-server --save 900 1 --requirepass ${REDIS_PASSWORD}
 {% else %}
-    command: 
-      - redis-server
-      - --appendonly
-      - "yes"
+    command: redis-server --save 900 1
 {% endif %}
     volumes:
       - /var/lib/redis:/data
-    ports:
-      - "6379:6379"
     networks:
       - blindstrader
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 3s
+      retries: 10
 
-  # User Management Service
-  user-management:
-    image: ghcr.io/barkoczi/blindstrader-user-management:latest
-    container_name: user-management
-    restart: unless-stopped
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    env_file:
-      - .env
-    volumes:
-      - ./services/user-management:/var/www/user-management
-    networks:
-      - blindstrader
-
-  # Catalog Service
-  catalog:
-    image: ghcr.io/barkoczi/blindstrader-catalog:latest
-    container_name: catalog
-    restart: unless-stopped
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    env_file:
-      - .env
-    volumes:
-      - ./services/catalog:/var/www/catalog
-    networks:
-      - blindstrader
-
-  # phpMyAdmin - Database Management
-  phpmyadmin:
-    image: phpmyadmin:latest
-    container_name: phpmyadmin
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: blindstrader-kafka
     restart: unless-stopped
     environment:
-      PMA_HOST: mysql
-      PMA_PORT: 3306
-      PMA_USER: root
-      PMA_PASSWORD: ${DB_PASSWORD}
-      UPLOAD_LIMIT: 100M
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: blindstrader-kafka-cluster-1
+    volumes:
+      - /var/lib/kafka:/var/lib/kafka/data
+    networks:
+      - blindstrader
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  # ─── Application Services ─────────────────────────────────────────────────────
+
+  identity:
+    image: ghcr.io/barkoczi/blindstrader-identity:latest
+    container_name: blindstrader-identity
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - /opt/blindstrader/services/identity:/app
+    environment:
+      APP_NAME: Identity
+      APP_KEY: {{ app_key_identity_secret.stdout }}
+      APP_ENV: {{ environment }}
+      APP_DEBUG: {{ 'true' if environment == 'stage' else 'false' }}
+      APP_URL: https://identity.{{ domain }}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: blindstrader_identity
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+{% if redis_password_secret.stdout %}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+{% endif %}
+      SESSION_DRIVER: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DOMAIN: .{{ domain }}
+      KAFKA_BROKERS: kafka:9092
+      SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN}
+      SENTRY_ENVIRONMENT: identity
+      SENTRY_TRACES_SAMPLE_RATE: 0.2
+      SENTRY_SEND_DEFAULT_PII: "true" 
     depends_on:
-      mysql:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     networks:
       - blindstrader
+    command: sh -c "php artisan migrate --force && php artisan db:seed --class=DatabaseSeeder --force && php-fpm"
+  brand:
+    image: ghcr.io/barkoczi/blindstrader-brand:latest
+    container_name: blindstrader-brand
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - /opt/blindstrader/services/brand:/app
+    environment:
+      APP_NAME: Brand
+      APP_KEY: {{ app_key_brand_secret.stdout }}
+      APP_ENV: {{ environment }}
+      APP_DEBUG: {{ 'true' if environment == 'stage' else 'false' }}
+      APP_URL: https://brand.{{ domain }}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: blindstrader_brand
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+{% if redis_password_secret.stdout %}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+{% endif %}
+      SESSION_DRIVER: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DOMAIN: .{{ domain }}
+      TENANCY_DB_HOST: db
+      TENANCY_DB_PORT: 3306
+      TENANCY_DB_USERNAME: ${DB_USERNAME}
+      TENANCY_DB_PASSWORD: ${DB_PASSWORD}
+      TENANCY_DB_PREFIX: blindstrader_brand_
+      KAFKA_BROKERS: kafka:9092
+      SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN}
+      SENTRY_ENVIRONMENT: brand
+      SENTRY_TRACES_SAMPLE_RATE: 0.2
+      SENTRY_SEND_DEFAULT_PII: "true" 
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - blindstrader
+    command: sh -c "php artisan migrate --force && php artisan db:seed --class=TenantSeeder --force && php-fpm"
+  supplier:
+    image: ghcr.io/barkoczi/blindstrader-supplier:latest
+    container_name: blindstrader-supplier
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - /opt/blindstrader/services/supplier:/app
+    environment:
+      APP_NAME: Supplier
+      APP_KEY: {{ app_key_supplier_secret.stdout }}
+      APP_ENV: {{ environment }}
+      APP_DEBUG: {{ 'true' if environment == 'stage' else 'false' }}
+      APP_URL: https://supplier.{{ domain }}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: blindstrader_supplier
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+{% if redis_password_secret.stdout %}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+{% endif %}
+      SESSION_DRIVER: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DOMAIN: .{{ domain }}
+      TENANCY_DB_HOST: db
+      TENANCY_DB_PORT: 3306
+      TENANCY_DB_USERNAME: ${DB_USERNAME}
+      TENANCY_DB_PASSWORD: ${DB_PASSWORD}
+      TENANCY_DB_PREFIX: blindstrader_supplier_
+      KAFKA_BROKERS: kafka:9092
+      SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN}
+      SENTRY_ENVIRONMENT: supplier
+      SENTRY_TRACES_SAMPLE_RATE: 0.2
+      SENTRY_SEND_DEFAULT_PII: "true" 
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - blindstrader
+    command: sh -c "php artisan migrate --force && php artisan db:seed --class=TenantSeeder --force && php-fpm"
+  supply-chain:
+    image: ghcr.io/barkoczi/blindstrader-supply-chain:latest
+    container_name: blindstrader-supply-chain
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - /opt/blindstrader/services/supply-chain:/app
+    environment:
+      APP_NAME: SupplyChain
+      APP_KEY: {{ app_key_supply_chain_secret.stdout }}
+      APP_ENV: {{ environment }}
+      APP_DEBUG: {{ 'true' if environment == 'stage' else 'false' }}
+      APP_URL: https://sc.{{ domain }}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: blindstrader_supply_chain
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+{% if redis_password_secret.stdout %}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+{% endif %}
+      SESSION_DRIVER: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DOMAIN: .{{ domain }}
+      KAFKA_BROKERS: kafka:9092
+      SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN}
+      SENTRY_ENVIRONMENT: supply-chain
+      SENTRY_TRACES_SAMPLE_RATE: 0.2
+      SENTRY_SEND_DEFAULT_PII: "true" 
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - blindstrader
+    command: sh -c "php artisan migrate --force && php-fpm"
+  payment:
+    image: ghcr.io/barkoczi/blindstrader-payment:latest
+    container_name: blindstrader-payment
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - /opt/blindstrader/services/payment:/app
+    environment:
+      APP_NAME: Payment
+      APP_KEY: {{ app_key_payment_secret.stdout }}
+      APP_ENV: {{ environment }}
+      APP_DEBUG: {{ 'true' if environment == 'stage' else 'false' }}
+      APP_URL: https://payment.{{ domain }}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: blindstrader_payment
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+{% if redis_password_secret.stdout %}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+{% endif %}
+      SESSION_DRIVER: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DOMAIN: .{{ domain }}
+      KAFKA_BROKERS: kafka:9092
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_CONNECT_CLIENT_ID: ${STRIPE_CONNECT_CLIENT_ID}
+      SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN}
+      SENTRY_ENVIRONMENT: payment
+      SENTRY_TRACES_SAMPLE_RATE: 0.2
+      SENTRY_SEND_DEFAULT_PII: "true" 
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - blindstrader
+    command: sh -c "php artisan migrate --force && php-fpm"
+  retailer:
+    image: ghcr.io/barkoczi/blindstrader-retailer:latest
+    container_name: blindstrader-retailer
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - /opt/blindstrader/services/retailer:/app
+    environment:
+      APP_NAME: Retailer
+      APP_KEY: {{ app_key_retailer_secret.stdout }}
+      APP_ENV: {{ environment }}
+      APP_DEBUG: {{ 'true' if environment == 'stage' else 'false' }}
+      APP_URL: https://retailer.{{ domain }}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: blindstrader_retailer
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+{% if redis_password_secret.stdout %}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+{% endif %}
+      SESSION_DRIVER: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DOMAIN: .{{ domain }}
+      TENANCY_DB_HOST: db
+      TENANCY_DB_PORT: 3306
+      TENANCY_DB_USERNAME: ${DB_USERNAME}
+      TENANCY_DB_PASSWORD: ${DB_PASSWORD}
+      TENANCY_DB_PREFIX: blindstrader_retailer_
+      KAFKA_BROKERS: kafka:9092
+      SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN}
+      SENTRY_ENVIRONMENT: retailer
+      SENTRY_TRACES_SAMPLE_RATE: 0.2
+      SENTRY_SEND_DEFAULT_PII: "true" 
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - blindstrader
+    command: sh -c "php artisan migrate --force && php artisan db:seed --class=TenantSeeder --force && php-fpm"
+  platform:
+    image: ghcr.io/barkoczi/blindstrader-platform:latest
+    container_name: blindstrader-platform
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - /opt/blindstrader/services/platform:/app
+    environment:
+      APP_NAME: Platform
+      APP_KEY: {{ app_key_platform_secret.stdout }}
+      APP_ENV: {{ environment }}
+      APP_DEBUG: {{ 'true' if environment == 'stage' else 'false' }}
+      APP_URL: https://platform.{{ domain }}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: blindstrader_platform
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+{% if redis_password_secret.stdout %}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+{% endif %}
+      SESSION_DRIVER: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DOMAIN: .{{ domain }}
+      KAFKA_BROKERS: kafka:9092
+      SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN}
+      SENTRY_ENVIRONMENT: platform
+      SENTRY_TRACES_SAMPLE_RATE: 0.2
+      SENTRY_SEND_DEFAULT_PII: "true" 
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - blindstrader
+    command: sh -c "php artisan migrate --force && php-fpm"
+  notification:
+    image: ghcr.io/barkoczi/blindstrader-notification:latest
+    container_name: blindstrader-notification
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - /opt/blindstrader/services/notification:/app
+    environment:
+      APP_NAME: Notification
+      APP_KEY: {{ app_key_notification_secret.stdout }}
+      APP_ENV: {{ environment }}
+      APP_DEBUG: {{ 'true' if environment == 'stage' else 'false' }}
+      APP_URL: https://notification.{{ domain }}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: blindstrader_notification
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+{% if redis_password_secret.stdout %}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+{% endif %}
+      SESSION_DRIVER: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DOMAIN: .{{ domain }}
+      SENTRY_LARAVEL_DSN: ${SENTRY_LARAVEL_DSN}
+      SENTRY_ENVIRONMENT: notification
+      SENTRY_TRACES_SAMPLE_RATE: 0.2
+      SENTRY_SEND_DEFAULT_PII: "true" 
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - blindstrader
+    command: sh -c "php artisan migrate --force && php-fpm"
+  # ─── API Docs Portal (Scalar) ─────────────────────────────────────────────────
 
-  # Nginx Web Server
+  docs:
+    image: scalar/api-reference:latest
+    container_name: blindstrader-docs
+    restart: unless-stopped
+    environment:
+      SCALAR_CONFIGURATION: >{
+        {"theme":"purple","layout":"modern","showSidebar":true,"references":[{"name":"Identity","url":"http://identity:9000/docs/api.json"},{"name":"Brand","url":"http://brand:9000/docs/api.json"},{"name":"Supplier","url":"http://supplier:9000/docs/api.json"},{"name":"Supply Chain","url":"http://supply-chain:9000/docs/api.json"},{"name":"Payment","url":"http://payment:9000/docs/api.json"},{"name":"Retailer","url":"http://retailer:9000/docs/api.json"},{"name":"Platform","url":"http://platform:9000/docs/api.json"},{"name":"Notification","url":"http://notification:9000/docs/api.json"}]}}
+    depends_on:
+      - identity
+      - brand
+      - supplier
+      - supply-chain
+      - payment
+      - retailer
+      - platform
+      - notification
+    networks:
+      - blindstrader
+
+  # ─── Reverse Proxy ───────────────────────────────────────────────────────────
+
   nginx:
-    image: nginx:alpine
-    container_name: nginx
+    image: openresty/openresty:alpine
+    container_name: blindstrader-nginx
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/certs:/etc/letsencrypt:ro
-      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+      - /opt/blindstrader/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /opt/blindstrader/nginx/conf.d:/etc/nginx/conf.d:ro
+      - /opt/blindstrader/nginx/certs:/etc/letsencrypt:ro
+      - /opt/blindstrader/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+      - /opt/blindstrader/services/identity:/app/identity:ro
+      - /opt/blindstrader/services/brand:/app/brand:ro
+      - /opt/blindstrader/services/supplier:/app/supplier:ro
+      - /opt/blindstrader/services/supply-chain:/app/supply-chain:ro
+      - /opt/blindstrader/services/payment:/app/payment:ro
+      - /opt/blindstrader/services/retailer:/app/retailer:ro
+      - /opt/blindstrader/services/platform:/app/platform:ro
+      - /opt/blindstrader/services/notification:/app/notification:ro
+      - /opt/blindstrader/logs/nginx:/var/log/nginx
       - certbot_webroot:/var/www/certbot:ro
     depends_on:
-      - user-management
-      - catalog
-      - phpmyadmin
+      - identity
+      - brand
+      - supplier
+      - supply-chain
+      - payment
+      - retailer
+      - platform
+      - notification
+      - docs
     networks:
       - blindstrader
 
-  # Certbot for SSL
   certbot:
     image: certbot/certbot:latest
-    container_name: certbot
+    container_name: blindstrader-certbot
     volumes:
-      - ./nginx/certs:/etc/letsencrypt
+      - /opt/blindstrader/nginx/certs:/etc/letsencrypt
       - certbot_webroot:/var/www/certbot
-    command: certonly --webroot --webroot-path=/var/www/certbot --email admin@{{ domain }} --agree-tos --no-eff-email -d {{ domain }} -d auth.{{ domain }} -d catalog.{{ domain }} -d insights.{{ domain }} -d prometheus.{{ domain }}
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait ${{!}}; done;'"
     networks:
       - blindstrader
 
-  # Prometheus Monitoring
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: blindstrader-phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: ${DB_ROOT_PASSWORD}
+      UPLOAD_LIMIT: 100M
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - blindstrader
+
+  # ─── Monitoring Stack ────────────────────────────────────────────────────────
+
   prometheus:
     image: prom/prometheus:latest
-    container_name: prometheus
+    container_name: blindstrader-prometheus
     restart: unless-stopped
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
     volumes:
-      - ./monitoring/prometheus:/etc/prometheus
+      - /opt/blindstrader/monitoring/prometheus:/etc/prometheus
       - /var/lib/monitoring/prometheus:/prometheus
-    ports:
-      - "9090:9090"
     networks:
       - blindstrader
 
-  # Grafana Dashboards
   grafana:
     image: grafana/grafana:latest
-    container_name: grafana
+    container_name: blindstrader-grafana
     restart: unless-stopped
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
-      - GF_INSTALL_PLUGINS=
+      GF_SERVER_ROOT_URL: https://insights.{{ domain }}
+      GF_SERVER_DOMAIN: insights.{{ domain }}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_INSTALL_PLUGINS: ""
     volumes:
+      - /opt/blindstrader/monitoring/grafana/provisioning:/etc/grafana/provisioning
       - /var/lib/monitoring/grafana:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
-    ports:
-      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
     networks:
       - blindstrader
 
-  # Loki Log Aggregation
   loki:
     image: grafana/loki:latest
-    container_name: loki
+    container_name: blindstrader-loki
     restart: unless-stopped
     command: -config.file=/etc/loki/loki-config.yml
     volumes:
-      - ./monitoring/loki:/etc/loki
+      - /opt/blindstrader/monitoring/loki:/etc/loki
       - /var/lib/monitoring/loki:/loki
-    ports:
-      - "3100:3100"
     networks:
       - blindstrader
 
-  # Promtail Log Collector
   promtail:
     image: grafana/promtail:latest
-    container_name: promtail
+    container_name: blindstrader-promtail
     restart: unless-stopped
     command: -config.file=/etc/promtail/promtail-config.yml
     volumes:
-      - ./monitoring/promtail:/etc/promtail
-      - /var/log:/var/log:ro
+      - /opt/blindstrader/monitoring/promtail:/etc/promtail
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/blindstrader/logs/nginx:/var/log/nginx:ro
+    depends_on:
+      - loki
     networks:
       - blindstrader
 
-  # cAdvisor - Container metrics
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
-    container_name: cadvisor
+    container_name: blindstrader-cadvisor
     restart: unless-stopped
     privileged: true
     volumes:
@@ -206,23 +575,47 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
       - /dev/disk:/dev/disk:ro
-    ports:
-      - "8080:8080"
+    devices:
+      - /dev/kmsg
     networks:
       - blindstrader
 
-  # Node Exporter - Host metrics
   node-exporter:
     image: prom/node-exporter:latest
-    container_name: node-exporter
+    container_name: blindstrader-node-exporter
     restart: unless-stopped
     command:
-      - '--path.rootfs=/host'
-    pid: host
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     volumes:
-      - '/:/host:ro,rslave'
-    ports:
-      - "9100:9100"
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    pid: host
+    networks:
+      - blindstrader
+
+  mysql-exporter:
+    image: prom/mysqld-exporter:latest
+    container_name: blindstrader-mysql-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "exporter:${MYSQL_EXPORTER_PASSWORD}@tcp(blindstrader-mysql:3306)/"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - blindstrader
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: blindstrader-redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "blindstrader-redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - blindstrader
 

@@ -9,62 +9,109 @@ rule_files:
   - '/etc/prometheus/alerts.yml'
 
 scrape_configs:
-  # cAdvisor - Container metrics
+
+  # ─── Infrastructure ──────────────────────────────────────────────────────────
+
   - job_name: 'cadvisor'
     static_configs:
       - targets: ['blindstrader-cadvisor:8080']
         labels:
           service: 'cadvisor'
 
-  # Node Exporter - Host system metrics
   - job_name: 'node-exporter'
     static_configs:
       - targets: ['blindstrader-node-exporter:9100']
         labels:
           service: 'node-exporter'
 
-  # MySQL Exporter - Database metrics
   - job_name: 'mysql-exporter'
     static_configs:
       - targets: ['blindstrader-mysql-exporter:9104']
         labels:
           service: 'mysql'
 
-  # Redis Exporter - Cache metrics
   - job_name: 'redis-exporter'
     static_configs:
       - targets: ['blindstrader-redis-exporter:9121']
         labels:
           service: 'redis'
 
-  # Catalog Service - Application metrics
-  - job_name: 'catalog-metrics'
+  - job_name: 'kafka-exporter'
+    static_configs:
+      - targets: ['blindstrader-kafka:7071']
+        labels:
+          service: 'kafka'
+
+  # ─── Application Services ─────────────────────────────────────────────────────
+
+  - job_name: 'identity-metrics'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['blindstrader-catalog:9000']
+      - targets: ['blindstrader-identity:9000']
         labels:
-          service: 'catalog'
+          service: 'identity'
           service_type: 'laravel'
 
-  # User Management Service - Application metrics
-  - job_name: 'user-management-metrics'
+  - job_name: 'brand-metrics'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['blindstrader-user-management:9000']
+      - targets: ['blindstrader-brand:9000']
         labels:
-          service: 'user-management'
+          service: 'brand'
           service_type: 'laravel'
 
-  # Prometheus Self-Monitoring
+  - job_name: 'supplier-metrics'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['blindstrader-supplier:9000']
+        labels:
+          service: 'supplier'
+          service_type: 'laravel'
+
+  - job_name: 'supply-chain-metrics'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['blindstrader-supply-chain:9000']
+        labels:
+          service: 'supply-chain'
+          service_type: 'laravel'
+
+  - job_name: 'payment-metrics'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['blindstrader-payment:9000']
+        labels:
+          service: 'payment'
+          service_type: 'laravel'
+
+  - job_name: 'retailer-metrics'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['blindstrader-retailer:9000']
+        labels:
+          service: 'retailer'
+          service_type: 'laravel'
+
+  - job_name: 'platform-metrics'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['blindstrader-platform:9000']
+        labels:
+          service: 'platform'
+          service_type: 'laravel'
+
+  - job_name: 'notification-metrics'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['blindstrader-notification:9000']
+        labels:
+          service: 'notification'
+          service_type: 'laravel'
+
+  # ─── Self-monitoring ─────────────────────────────────────────────────────────
+
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
         labels:
           service: 'prometheus'
-
-  # Grafana Metrics (optional)
-  - job_name: 'grafana'
-    static_configs:
-      - targets: ['blindstrader-grafana:3000']
-        labels:
-          service: 'grafana'
